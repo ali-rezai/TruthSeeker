@@ -8,6 +8,8 @@ import {
     getEmbeddingZeroVector,
     messageCompletionFooter,
     ModelClass,
+    Service,
+    ServiceType,
     settings,
     stringToUuid,
     type AgentRuntime,
@@ -980,6 +982,176 @@ export class DirectClient {
                 });
             }
         });
+    
+        this.app.post("/:agentId/verify-claim", async (req, res) => {
+            const agentId = req.params.agentId;
+            const roomId = stringToUuid(
+                req.body.roomId ?? "default-room-" + agentId
+            );
+            const userId = stringToUuid(req.body.userId ?? "user");
+
+            let runtime = this.agents.get(agentId);
+
+            // if runtime is null, look for runtime with the same name
+            if (!runtime) {
+                runtime = Array.from(this.agents.values()).find(
+                    (a) =>
+                        a.character.name.toLowerCase() ===
+                        agentId.toLowerCase()
+                );
+            }
+
+            if (!runtime) {
+                res.status(404).send("Agent not found");
+                return;
+            }
+
+            await runtime.ensureConnection(
+                userId,
+                roomId,
+                req.body.userName,
+                req.body.name,
+                "direct"
+            );
+
+            const text = req.body.text;
+            // if empty text, directly return
+            if (!text) {
+                res.json([]);
+                return;
+            }
+
+            let state = await runtime.composeState({
+                content: {
+                    text: "",
+                },
+                userId,
+                roomId,
+                agentId: runtime.agentId,
+            }, {
+                agentName: runtime.character.name,
+                claim: text,
+            });
+
+            // Generate queries
+            const queryContext = composeContext({
+                state,
+                template: queryGeneratorTemplate,
+            });
+            const negativeQueryContext = composeContext({
+                state,
+                template: negativeQueryGeneratorTemplate,
+            });
+            const queries = await generateMessageResponse({
+                runtime: runtime,
+                context: queryContext,
+                modelClass: ModelClass.LARGE,
+            }) as any as string[];
+            const negativeQueries = await generateMessageResponse({
+                runtime: runtime,
+                context: negativeQueryContext,
+                modelClass: ModelClass.LARGE,
+            }) as any as string[];
+
+            if (!queries && !negativeQueries) {
+                res.status(500).send("No queries generated");
+                return;
+            }
+            console.log(queries);
+            console.log(negativeQueries);
+
+            const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
+
+            // Get Results
+            let promises = [];
+            for (const query of queries) {
+                promises.push(new Promise(async (resolve, reject) => {
+                    const searchResponse = await webSearchService.search(
+                        query,
+                        runtime
+                    );
+                    //console.log(searchResponse);
+    
+                    if (searchResponse && searchResponse.results.length) {
+                        resolve({
+                            query,
+                            text: searchResponse.answer ?? "Could not get an aswer",
+                        });
+                    } else {
+                        elizaLogger.error("search failed or returned no data.");
+                        resolve(null);
+                    }
+                }));
+            }
+            const queryResults = await Promise.all(promises);
+
+            promises = [];
+            for (const query of negativeQueries) {
+                promises.push(new Promise(async (resolve, reject) => {
+                    const searchResponse = await webSearchService.search(
+                        query,
+                        runtime
+                    );
+                    //console.log(searchResponse);
+    
+                    if (searchResponse && searchResponse.results.length) {
+                        resolve({
+                            query,
+                            text: searchResponse.answer ?? "Could not get an aswer",
+                        });
+                    } else {
+                        elizaLogger.error("search failed or returned no data.");
+                        resolve(null);
+                    }
+                }));
+            }
+            const negativeQueryResults = await Promise.all(promises);
+
+            // Reason
+            state["queryResults"] = queryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
+            state["negativeQueryResults"] = negativeQueryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
+
+            const decisionContext = composeContext({
+                state,
+                template: decisionMakingTemplate,
+            });
+            const decision = await generateMessageResponse({
+                runtime: runtime,
+                context: decisionContext,
+                modelClass: ModelClass.LARGE,
+            });
+            const negativeDecisionContext = composeContext({
+                state,
+                template: negativeDecisionMakingTemplate,
+            });
+            const negativeDecision = await generateMessageResponse({
+                runtime: runtime,
+                context: negativeDecisionContext,
+                modelClass: ModelClass.LARGE,
+            });
+
+            // Aggregation
+            state["decision"] = decision;
+            state["negativeDecision"] = negativeDecision;
+            const aggregatorContext = composeContext({
+                state,
+                template: aggregatorTemplate,
+            });
+            const aggregationResult = await generateMessageResponse({
+                runtime: runtime,
+                context: aggregatorContext,
+                modelClass: ModelClass.LARGE,
+            });
+
+            if (!aggregationResult) {
+                res.status(500).send(
+                    "No response from generateMessageResponse"
+                );
+                return;
+            }
+
+            res.json(aggregationResult);
+        })
     }
 
     // agent/src/index.ts:startAgent calls this
@@ -1054,3 +1226,164 @@ const directPlugin: Plugin = {
     clients: [DirectClientInterface],
 };
 export default directPlugin;
+
+const queryGeneratorTemplate = `
+# About {{agentName}}
+{{bio}}
+{{lore}}
+
+{{providers}}
+
+# Claim
+{{claim}}
+
+# Task
+As {{agentName}} generate search queries that will help verify the claim. Your queries should be designed to gather factual information needed to make an informed assessment.
+
+Focus on finding objective data rather than directly searching for the claim itself. For example:
+- Instead of "Did X happen?" search for specific details about the event
+- Instead of "Is Y true?" search for verifiable facts and statistics
+- Instead of "Was Z successful?" search for measurable outcomes and results
+
+The actual judging of the claim will be done later, So for now just focus on generating queries that provide quality context and information.
+Keep queries precise and targeted to avoid ambiguous results. Limit to a maximum of 10 queries.
+
+# Instructions
+Please respond in the following way:
+\`\`\`json
+["query1", "query2", "query3", ...]
+\`\`\`
+`;
+
+const decisionMakingTemplate = `
+# About {{agentName}}
+{{bio}}
+{{lore}}
+
+{{providers}}
+
+# Claim
+{{claim}}
+
+# Task
+As {{agentName}} you are tasked with judging the claim. You came up with some queries to gather information about the claim and now you have the results.
+So using the data you have gathered, make a decision.
+
+# Information
+{{queryResults}}
+
+# Instructions
+Respond in the following way:
+\`\`\`json
+{
+    decision: "true" | "false" | "unknown",
+    reason: "string"
+}
+\`\`\`
+`;
+
+
+
+
+
+
+
+const negativeQueryGeneratorTemplate = `
+# About {{agentName}}
+{{bio}}
+{{lore}}
+
+{{providers}}
+
+# Claim
+{{claim}}
+
+# Task
+As {{agentName}} you are very confident that the claim is false and not true. But you just need sources to support your confidence.
+Your task currently is to generate search queries that will help show that the claim is false.
+
+Focus on finding objective data rather than directly searching for the claim itself or the opposite of the claim. For example:
+- Instead of "Did X happen?" search for specific details about the event
+- Instead of "Is Y true?" search for verifiable facts and statistics
+- Instead of "Was Z successful?" search for measurable outcomes and results
+
+Basically focus on gathering relevant data that will help show that the claim is false.
+
+# Instructions
+Please respond in the following way:
+\`\`\`json
+["query1", "query2", "query3", ...]
+\`\`\`
+`;
+
+const negativeDecisionMakingTemplate = `
+# About {{agentName}}
+{{bio}}
+{{lore}}
+
+{{providers}}
+
+# Claim
+{{claim}}
+
+# Task
+As {{agentName}} you were very confident that the claim was false. You came up with some queries to help you present your case on why the claim is false.
+Now you have the results of the queries, and your job is to go over them and make a case for why the claim is false.
+However if you do think that the claim is true now or actually "unknown" and not false, then it's ok to change your mind.
+
+# Information
+{{negativeQueryResults}}
+
+# Instructions
+Respond in the following way:
+\`\`\`json
+{
+    decision: "true" | "false" | "unknown",
+    reason: "string"
+}
+\`\`\`
+`;
+
+
+const aggregatorTemplate = `
+# About {{agentName}}
+{{bio}}
+{{lore}}
+
+{{providers}}
+
+# Claim
+{{claim}}
+
+# Task
+2 different agents tried to verify the claim.
+AgentClaimCheck just went to query data relating to it and then made a decision based on those.
+AgentNegClaimCheck went to query data assuming the claim was false and then made a decision based on those.
+Your job is to take the results from both agents and make a final decision.
+
+Be extremely paranoid and care about every single word in the claim.
+
+# AgentClaimCheck
+## Queries and Information Gathered
+{{queryResults}}
+
+## Decision
+{{decision}}
+
+# AgentNegClaimCheck
+## Queries and Information Gathered
+{{negativeQueryResults}}
+
+## Decision
+{{negativeDecision}}
+
+# Instructions
+Respond in the following way:
+\`\`\`json
+{
+    decision: "true" | "false" | "unknown",
+    reason: "string"
+}
+\`\`\`
+Also make sure to write your though process as part of the reason as well.
+`;
