@@ -1040,27 +1040,27 @@ export class DirectClient {
                 state,
                 template: queryGeneratorTemplate,
             });
-            const negativeQueryContext = composeContext({
+            const redTeamQueryContext = composeContext({
                 state,
-                template: negativeQueryGeneratorTemplate,
+                template: redTeamQueryGeneratorTemplate,
             });
-            const queries = await generateMessageResponse({
+            const blueTeamQueries = await generateMessageResponse({
                 runtime: runtime,
                 context: queryContext,
                 modelClass: ModelClass.LARGE,
             }) as any as string[];
-            const negativeQueries = await generateMessageResponse({
+            const redTeamQueries = await generateMessageResponse({
                 runtime: runtime,
-                context: negativeQueryContext,
+                context: redTeamQueryContext,
                 modelClass: ModelClass.LARGE,
             }) as any as string[];
 
-            if (!queries && !negativeQueries) {
+            if (!blueTeamQueries && !redTeamQueries) {
                 res.status(500).send("No queries generated");
                 return;
             }
-            elizaLogger.info("Generated positive queries:", queries);
-            elizaLogger.info("Generated negative queries:", negativeQueries);
+            elizaLogger.info("Generated Blue team queries:", blueTeamQueries);
+            elizaLogger.info("Generated Red team queries:", redTeamQueries);
 
             const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
 
@@ -1071,10 +1071,10 @@ export class DirectClient {
 
             // Get Results - UPDATED to use both search providers
             let promises = [];
-            for (const query of queries) {
+            for (const query of blueTeamQueries) {
                 promises.push(new Promise(async (resolve, reject) => {
                     try {
-                        elizaLogger.info(`Executing positive query: "${query}"`);
+                        elizaLogger.info(`Executing Blue team query: "${query}"`);
 
                         // Use both Tavily and Exa if available
                         const searchResponse = await webSearchService.search(
@@ -1146,14 +1146,14 @@ export class DirectClient {
                     }
                 }));
             }
-            const queryResults = await Promise.all(promises);
-            elizaLogger.info("Completed positive query searches");
+            const blueTeamQueryResults = await Promise.all(promises);
+            elizaLogger.info("Completed Blue team query searches");
 
             promises = [];
-            for (const query of negativeQueries) {
+            for (const query of redTeamQueries) {
                 promises.push(new Promise(async (resolve, reject) => {
                     try {
-                        elizaLogger.info(`Executing negative query: "${query}"`);
+                        elizaLogger.info(`Executing Red team query: "${query}"`);
 
                         // Use both Tavily and Exa if available
                         const searchResponse = await webSearchService.search(
@@ -1225,39 +1225,39 @@ export class DirectClient {
                     }
                 }));
             }
-            const negativeQueryResults = await Promise.all(promises);
-            elizaLogger.info("Completed negative query searches");
+            const redTeamQueryResults = await Promise.all(promises);
+            elizaLogger.info("Completed Red team query searches");
 
             // Reason
-            state["queryResults"] = queryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
-            state["negativeQueryResults"] = negativeQueryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
+            state["blueTeamQueryResults"] = blueTeamQueryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
+            state["redTeamQueryResults"] = redTeamQueryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
 
-            elizaLogger.info("Starting decision making process");
-            const decisionContext = composeContext({
+            elizaLogger.info("Starting Blue team decision making process");
+            const blueTeamDecisionContext = composeContext({
                 state,
-                template: decisionMakingTemplate,
+                template: blueTeamDecisionMakingTemplate,
             });
-            const decision = await generateMessageResponse({
+            const blueTeamDecision = await generateMessageResponse({
                 runtime: runtime,
-                context: decisionContext,
+                context: blueTeamDecisionContext,
                 modelClass: ModelClass.LARGE,
             });
-            elizaLogger.info("Positive decision completed");
+            elizaLogger.info("Blue team decision completed");
 
-            const negativeDecisionContext = composeContext({
+            const redTeamDecisionContext = composeContext({
                 state,
-                template: negativeDecisionMakingTemplate,
+                template: redTeamDecisionMakingTemplate,
             });
-            const negativeDecision = await generateMessageResponse({
+            const redTeamDecision = await generateMessageResponse({
                 runtime: runtime,
-                context: negativeDecisionContext,
+                context: redTeamDecisionContext,
                 modelClass: ModelClass.LARGE,
             });
-            elizaLogger.info("Negative decision completed");
+            elizaLogger.info("Red team decision completed");
 
             // Aggregation
-            state["decision"] = decision;
-            state["negativeDecision"] = negativeDecision;
+            state["blueTeamDecision"] = blueTeamDecision;
+            state["redTeamDecision"] = redTeamDecision;
             elizaLogger.info("Starting final aggregation");
             const aggregatorContext = composeContext({
                 state,
@@ -1383,7 +1383,7 @@ Please respond in the following way:
 \`\`\`
 `;
 
-const decisionMakingTemplate = `
+const blueTeamDecisionMakingTemplate = `
 # About {{agentName}}
 {{bio}}
 {{lore}}
@@ -1398,7 +1398,7 @@ As {{agentName}} you are tasked with judging the claim. You came up with some qu
 So using the data you have gathered, make a decision.
 
 # Information
-{{queryResults}}
+{{blueTeamQueryResults}}
 
 # Instructions
 Respond in the following way:
@@ -1410,7 +1410,7 @@ Respond in the following way:
 \`\`\`
 `;
 
-const negativeQueryGeneratorTemplate = `
+const redTeamQueryGeneratorTemplate = `
 # About {{agentName}}
 {{bio}}
 {{lore}}
@@ -1438,7 +1438,7 @@ Please respond in the following way:
 \`\`\`
 `;
 
-const negativeDecisionMakingTemplate = `
+const redTeamDecisionMakingTemplate = `
 # About {{agentName}}
 {{bio}}
 {{lore}}
@@ -1454,7 +1454,7 @@ Now you have the results of the queries, and your job is to go over them and mak
 However if you do think that the claim is true now or actually "unknown" and not false, then it's ok to change your mind.
 
 # Information
-{{negativeQueryResults}}
+{{redTeamQueryResults}}
 
 # Instructions
 Respond in the following way:
@@ -1477,26 +1477,26 @@ const aggregatorTemplate = `
 {{claim}}
 
 # Task
-2 different agents tried to verify the claim.
-AgentClaimCheck just went to query data relating to it and then made a decision based on those.
-AgentNegClaimCheck went to query data assuming the claim was false and then made a decision based on those.
-Your job is to take the results from both agents and make a final decision.
+2 different teams tried to verify the claim.
+The Blue team just went to query data relating to it and then made a decision based on those.
+The Red team went to query data assuming the claim was false and then made a decision based on those.
+Your job is to take the results from both teams and make a final decision.
 
 Be extremely paranoid and care about every single word in the claim.
 
-# AgentClaimCheck
+# Blue Team
 ## Queries and Information Gathered
-{{queryResults}}
+{{blueTeamQueryResults}}
 
 ## Decision
-{{decision}}
+{{blueTeamDecision}}
 
-# AgentNegClaimCheck
+# Red Team
 ## Queries and Information Gathered
-{{negativeQueryResults}}
+{{redTeamQueryResults}}
 
 ## Decision
-{{negativeDecision}}
+{{redTeamDecision}}
 
 # Instructions
 Respond in the following way:
