@@ -30,6 +30,7 @@ import * as path from "path";
 import { z } from "zod";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
+import { aggregatorTemplate, decisionTemplate, queryTemplate } from "./templates.ts";
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -983,12 +984,17 @@ export class DirectClient {
             }
         });
 
-        this.app.post("/:agentId/verify-claim", async (req, res) => {
+        this.app.post("/:agentId/verify-claim-1", async (req, res) => {
             const agentId = req.params.agentId;
             const roomId = stringToUuid(
                 req.body.roomId ?? "default-room-" + agentId
             );
             const userId = stringToUuid(req.body.userId ?? "user");
+            const team = req.body.team ?? "blue";
+            const prevTeamInformation = req.body.prevTeamInformation;
+            const prevTeamDecision = req.body.prevTeamDecision ? JSON.parse(req.body.prevTeamDecision) : null;
+
+            const prevTeam: "blue" | "red" | null = prevTeamDecision ? (team == "blue" ? "red" : "blue") : null;
 
             let runtime = this.agents.get(agentId);
 
@@ -1029,7 +1035,7 @@ export class DirectClient {
                 },
                 userId,
                 roomId,
-                agentId: runtime.agentId,
+                agentId: runtime.agentId
             }, {
                 agentName: runtime.character.name,
                 claim: text,
@@ -1038,29 +1044,19 @@ export class DirectClient {
             // Generate queries
             const queryContext = composeContext({
                 state,
-                template: queryGeneratorTemplate,
+                template: queryTemplate(team, prevTeam, prevTeamInformation, prevTeamDecision),
             });
-            const redTeamQueryContext = composeContext({
-                state,
-                template: redTeamQueryGeneratorTemplate,
-            });
-            const blueTeamQueries = await generateMessageResponse({
+            const queries = await generateMessageResponse({
                 runtime: runtime,
                 context: queryContext,
                 modelClass: ModelClass.LARGE,
             }) as any as string[];
-            const redTeamQueries = await generateMessageResponse({
-                runtime: runtime,
-                context: redTeamQueryContext,
-                modelClass: ModelClass.LARGE,
-            }) as any as string[];
 
-            if (!blueTeamQueries && !redTeamQueries) {
+            if (!queries) {
                 res.status(500).send("No queries generated");
                 return;
             }
-            elizaLogger.info("Generated Blue team queries:", blueTeamQueries);
-            elizaLogger.info("Generated Red team queries:", redTeamQueries);
+            elizaLogger.info(`Generated ${team} team queries:`, queries);
 
             const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
 
@@ -1070,10 +1066,10 @@ export class DirectClient {
 
             // Get Results using all available providers
             let promises = [];
-            for (const query of blueTeamQueries) {
+            for (const query of queries) {
                 promises.push(new Promise(async (resolve, reject) => {
                     try {
-                        elizaLogger.info(`Executing Blue team query: "${query}"`);
+                        elizaLogger.info(`Executing ${team} team query: "${query}"`);
 
                         // Use all available providers
                         const searchResponse = await webSearchService.search(
@@ -1142,119 +1138,90 @@ export class DirectClient {
                     }
                 }));
             }
-            const blueTeamQueryResults = await Promise.all(promises);
-            elizaLogger.info("Completed Blue team query searches");
-
-            promises = [];
-            for (const query of redTeamQueries) {
-                promises.push(new Promise(async (resolve, reject) => {
-                    try {
-                        elizaLogger.info(`Executing Red team query: "${query}"`);
-
-                        // Use all available providers
-                        const searchResponse = await webSearchService.search(
-                            query,
-                            { provider: "both" } // Use all available providers
-                        );
-
-                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${
-                            searchResponse.usedProviders && searchResponse.usedProviders.length > 0
-                                ? searchResponse.usedProviders.join(', ')
-                                : searchResponse.provider
-                        }`);
-
-                        elizaLogger.debug(`Search response details: provider=${searchResponse.provider}, usedProviders=${JSON.stringify(searchResponse.usedProviders || [])}`);
-
-                        if (searchResponse) {
-                            // Handle combined results from multiple providers
-                            if (searchResponse.provider === "both" && searchResponse.combinedResults) {
-                                const providerNames = Object.keys(searchResponse)
-                                    .filter(key => key !== 'provider' && key !== 'combinedResults')
-                                    .join(', ');
-
-                                elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
-
-                                resolve({
-                                    query,
-                                    text: searchResponse.tavily?.answer ||
-                                          `Search results from ${providerNames}: ` +
-                                          searchResponse.combinedResults.map(r =>
-                                            `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
-                                          ).join("\n\n"),
-                                });
-                            }
-                            // Handle single provider results
-                            else if (searchResponse.results?.length) {
-                                elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
-
-                                resolve({
-                                    query,
-                                    text: searchResponse.answer ||
-                                          searchResponse.results.map(r =>
-                                            `${r.title}: ${r.content?.substring(0, 200) || r.text?.substring(0, 200)}...`
-                                          ).join("\n\n"),
-                                });
-                            }
-                            else {
-                                elizaLogger.warn(`No relevant results found for "${query}"`);
-                                resolve({
-                                    query,
-                                    text: "No relevant results found.",
-                                });
-                            }
-                        } else {
-                            elizaLogger.error(`Search failed or returned no data for "${query}"`);
-                            resolve({
-                                query,
-                                text: "Search failed to return results."
-                            });
-                        }
-                    } catch (error) {
-                        elizaLogger.error(`Error during search for "${query}":`, error);
-                        resolve({
-                            query,
-                            text: "Error during search: " + error.message
-                        });
-                    }
-                }));
-            }
-            const redTeamQueryResults = await Promise.all(promises);
-            elizaLogger.info("Completed Red team query searches");
+            const queryResults = await Promise.all(promises);
+            elizaLogger.info(`Completed ${team} team query searches`);
 
             // Reason
-            state["blueTeamQueryResults"] = blueTeamQueryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
-            state["redTeamQueryResults"] = redTeamQueryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
+            state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
 
-            elizaLogger.info("Starting Blue team decision making process");
-            const blueTeamDecisionContext = composeContext({
+            elizaLogger.info(`Starting ${team} team decision making process`);
+            const decisionContext = composeContext({
                 state,
-                template: blueTeamDecisionMakingTemplate,
+                template: decisionTemplate(team, prevTeam, prevTeamInformation, prevTeamDecision),
             });
-            const blueTeamDecision = await generateMessageResponse({
+            const decision = await generateMessageResponse({
                 runtime: runtime,
-                context: blueTeamDecisionContext,
+                context: decisionContext,
                 modelClass: ModelClass.LARGE,
             });
-            elizaLogger.info("Blue team decision completed");
+            elizaLogger.info(`${team} team decision completed`);
+            res.json({decision, queryResults: state["queryResults"]});
+        });
 
-            const redTeamDecisionContext = composeContext({
-                state,
-                template: redTeamDecisionMakingTemplate,
+        this.app.post("/:agentId/verify-claim-2", async (req, res) => {
+            const agentId = req.params.agentId;
+            const roomId = stringToUuid(
+                req.body.roomId ?? "default-room-" + agentId
+            );
+            const userId = stringToUuid(req.body.userId ?? "user");
+            const blueTeamDecision = JSON.parse(req.body.blueTeamDecision);
+            const redTeamDecision = JSON.parse(req.body.redTeamDecision);
+            const blueTeamInformation = req.body.blueTeamInformation;
+            const redTeamInformation = req.body.redTeamInformation;
+
+            console.log(redTeamDecision)
+            console.log(redTeamInformation)
+            console.log(blueTeamDecision)
+            console.log(blueTeamInformation)
+
+            let runtime = this.agents.get(agentId);
+
+            // if runtime is null, look for runtime with the same name
+            if (!runtime) {
+                runtime = Array.from(this.agents.values()).find(
+                    (a) =>
+                        a.character.name.toLowerCase() ===
+                        agentId.toLowerCase()
+                );
+            }
+
+            if (!runtime) {
+                res.status(404).send("Agent not found");
+                return;
+            }
+
+            await runtime.ensureConnection(
+                userId,
+                roomId,
+                req.body.userName,
+                req.body.name,
+                "direct"
+            );
+
+            const text = req.body.text;
+            // if empty text, directly return
+            if (!text) {
+                res.json([]);
+                return;
+            }
+
+            let state = await runtime.composeState({
+                content: {
+                    text: "",
+                },
+                userId,
+                roomId,
+                agentId: runtime.agentId
+            }, {
+                agentName: runtime.character.name,
+                claim: text,
             });
-            const redTeamDecision = await generateMessageResponse({
-                runtime: runtime,
-                context: redTeamDecisionContext,
-                modelClass: ModelClass.LARGE,
-            });
-            elizaLogger.info("Red team decision completed");
 
             // Aggregation
-            state["blueTeamDecision"] = blueTeamDecision;
-            state["redTeamDecision"] = redTeamDecision;
             elizaLogger.info("Starting final aggregation");
             const aggregatorContext = composeContext({
                 state,
-                template: aggregatorTemplate,
+                template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
             });
             const aggregationResult = await generateMessageResponse({
                 runtime: runtime,
@@ -1347,157 +1314,3 @@ const directPlugin: Plugin = {
     clients: [DirectClientInterface],
 };
 export default directPlugin;
-
-const queryGeneratorTemplate = `
-# About {{agentName}}
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-# Claim
-{{claim}}
-
-# Task
-As {{agentName}} generate search queries that will help verify the claim. Your queries should be designed to gather factual information needed to make an informed assessment.
-
-Focus on finding objective data rather than directly searching for the claim itself. For example:
-- Instead of "Did X happen?" search for specific details about the event
-- Instead of "Is Y true?" search for verifiable facts and statistics
-- Instead of "Was Z successful?" search for measurable outcomes and results
-
-The actual judging of the claim will be done later, So for now just focus on generating queries that provide quality context and information.
-Keep queries precise and targeted to avoid ambiguous results. Limit to a maximum of 10 queries.
-
-# Instructions
-Please respond in the following way:
-\`\`\`json
-["query1", "query2", "query3", ...]
-\`\`\`
-`;
-
-const blueTeamDecisionMakingTemplate = `
-# About {{agentName}}
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-# Claim
-{{claim}}
-
-# Task
-As {{agentName}} you are tasked with judging the claim. You came up with some queries to gather information about the claim and now you have the results.
-So using the data you have gathered, make a decision.
-
-# Information
-{{blueTeamQueryResults}}
-
-# Instructions
-Respond in the following way:
-\`\`\`json
-{
-    decision: "true" | "false" | "unknown",
-    reason: "string"
-}
-\`\`\`
-`;
-
-const redTeamQueryGeneratorTemplate = `
-# About {{agentName}}
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-# Claim
-{{claim}}
-
-# Task
-As {{agentName}} you are very confident that the claim is false and not true. But you just need sources to support your confidence.
-Your task currently is to generate search queries that will help show that the claim is false.
-
-Focus on finding objective data rather than directly searching for the claim itself or the opposite of the claim. For example:
-- Instead of "Did X happen?" search for specific details about the event
-- Instead of "Is Y true?" search for verifiable facts and statistics
-- Instead of "Was Z successful?" search for measurable outcomes and results
-
-Basically focus on gathering relevant data that will help show that the claim is false.
-
-# Instructions
-Please respond in the following way:
-\`\`\`json
-["query1", "query2", "query3", ...]
-\`\`\`
-`;
-
-const redTeamDecisionMakingTemplate = `
-# About {{agentName}}
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-# Claim
-{{claim}}
-
-# Task
-As {{agentName}} you were very confident that the claim was false. You came up with some queries to help you present your case on why the claim is false.
-Now you have the results of the queries, and your job is to go over them and make a case for why the claim is false.
-However if you do think that the claim is true now or actually "unknown" and not false, then it's ok to change your mind.
-
-# Information
-{{redTeamQueryResults}}
-
-# Instructions
-Respond in the following way:
-\`\`\`json
-{
-    decision: "true" | "false" | "unknown",
-    reason: "string"
-}
-\`\`\`
-`;
-
-const aggregatorTemplate = `
-# About {{agentName}}
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-# Claim
-{{claim}}
-
-# Task
-2 different teams tried to verify the claim.
-The Blue team just went to query data relating to it and then made a decision based on those.
-The Red team went to query data assuming the claim was false and then made a decision based on those.
-Your job is to take the results from both teams and make a final decision.
-
-Be extremely paranoid and care about every single word in the claim.
-
-# Blue Team
-## Queries and Information Gathered
-{{blueTeamQueryResults}}
-
-## Decision
-{{blueTeamDecision}}
-
-# Red Team
-## Queries and Information Gathered
-{{redTeamQueryResults}}
-
-## Decision
-{{redTeamDecision}}
-
-# Instructions
-Respond in the following way:
-\`\`\`json
-{
-    decision: "true" | "false" | "unknown",
-    reason: "string"
-}
-\`\`\`
-Also make sure to write your though process as part of the reason as well.
-`;
