@@ -982,7 +982,7 @@ export class DirectClient {
                 });
             }
         });
-    
+
         this.app.post("/:agentId/verify-claim", async (req, res) => {
             const agentId = req.params.agentId;
             const roomId = stringToUuid(
@@ -1021,6 +1021,8 @@ export class DirectClient {
                 return;
             }
 
+            elizaLogger.info(`Starting claim verification for: "${text}"`);
+
             let state = await runtime.composeState({
                 content: {
                     text: "",
@@ -1057,60 +1059,180 @@ export class DirectClient {
                 res.status(500).send("No queries generated");
                 return;
             }
-            console.log(queries);
-            console.log(negativeQueries);
+            elizaLogger.info("Generated positive queries:", queries);
+            elizaLogger.info("Generated negative queries:", negativeQueries);
 
             const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
 
-            // Get Results
+            // Check which search providers are available
+            const tavilyAvailable = !!webSearchService.tavilyClient;
+            const exaAvailable = !!webSearchService.exaClient;
+            elizaLogger.info(`Search providers available - Tavily: ${tavilyAvailable}, Exa: ${exaAvailable}`);
+
+            // Get Results - UPDATED to use both search providers
             let promises = [];
             for (const query of queries) {
                 promises.push(new Promise(async (resolve, reject) => {
-                    const searchResponse = await webSearchService.search(
-                        query,
-                        runtime
-                    );
-                    //console.log(searchResponse);
-    
-                    if (searchResponse && searchResponse.results.length) {
+                    try {
+                        elizaLogger.info(`Executing positive query: "${query}"`);
+
+                        // Use both Tavily and Exa if available
+                        const searchResponse = await webSearchService.search(
+                            query,
+                            { provider: "both" } // Use both Tavily and Exa
+                        );
+
+                        elizaLogger.info(`Search provider used for "${query}": ${searchResponse.provider || 'unknown'}`);
+
+                        if (searchResponse) {
+                            // Handle combined results if both providers were used
+                            if (searchResponse.provider === "both" && searchResponse.combinedResults) {
+                                elizaLogger.info(`Got combined results from both providers for "${query}"`);
+                                elizaLogger.debug(`Tavily results count: ${searchResponse.tavily?.results?.length || 0}`);
+                                elizaLogger.debug(`Exa results count: ${searchResponse.exa?.results?.length || 0}`);
+
+                                resolve({
+                                    query,
+                                    text: searchResponse.tavily?.answer ||
+                                          "Combined search results: " +
+                                          searchResponse.combinedResults.map(r =>
+                                            `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
+                                          ).join("\n\n"),
+                                });
+                            }
+                            // Handle Tavily-only results
+                            else if (searchResponse.provider === "tavily" && searchResponse.results?.length) {
+                                elizaLogger.info(`Got Tavily-only results for "${query}" (${searchResponse.results.length} results)`);
+
+                                resolve({
+                                    query,
+                                    text: searchResponse.answer ||
+                                          searchResponse.results.map(r =>
+                                            `${r.title}: ${r.content?.substring(0, 200)}...`
+                                          ).join("\n\n"),
+                                });
+                            }
+                            // Handle Exa-only results
+                            else if (searchResponse.provider === "exa" && searchResponse.results?.length) {
+                                elizaLogger.info(`Got Exa-only results for "${query}" (${searchResponse.results.length} results)`);
+
+                                resolve({
+                                    query,
+                                    text: searchResponse.results.map(r =>
+                                        `${r.title}: ${r.text?.substring(0, 200) || r.content?.substring(0, 200)}...`
+                                    ).join("\n\n"),
+                                });
+                            }
+                            else {
+                                elizaLogger.warn(`No relevant results found for "${query}"`);
+                                resolve({
+                                    query,
+                                    text: "No relevant results found.",
+                                });
+                            }
+                        } else {
+                            elizaLogger.error(`Search failed or returned no data for "${query}"`);
+                            resolve({
+                                query,
+                                text: "Search failed to return results."
+                            });
+                        }
+                    } catch (error) {
+                        elizaLogger.error(`Error during search for "${query}":`, error);
                         resolve({
                             query,
-                            text: searchResponse.answer ?? "Could not get an aswer",
+                            text: "Error during search: " + error.message
                         });
-                    } else {
-                        elizaLogger.error("search failed or returned no data.");
-                        resolve(null);
                     }
                 }));
             }
             const queryResults = await Promise.all(promises);
+            elizaLogger.info("Completed positive query searches");
 
             promises = [];
             for (const query of negativeQueries) {
                 promises.push(new Promise(async (resolve, reject) => {
-                    const searchResponse = await webSearchService.search(
-                        query,
-                        runtime
-                    );
-                    //console.log(searchResponse);
-    
-                    if (searchResponse && searchResponse.results.length) {
+                    try {
+                        elizaLogger.info(`Executing negative query: "${query}"`);
+
+                        // Use both Tavily and Exa if available
+                        const searchResponse = await webSearchService.search(
+                            query,
+                            { provider: "both" } // Use both Tavily and Exa
+                        );
+
+                        elizaLogger.info(`Search provider used for "${query}": ${searchResponse.provider || 'unknown'}`);
+
+                        if (searchResponse) {
+                            // Handle combined results if both providers were used
+                            if (searchResponse.provider === "both" && searchResponse.combinedResults) {
+                                elizaLogger.info(`Got combined results from both providers for "${query}"`);
+                                elizaLogger.debug(`Tavily results count: ${searchResponse.tavily?.results?.length || 0}`);
+                                elizaLogger.debug(`Exa results count: ${searchResponse.exa?.results?.length || 0}`);
+
+                                resolve({
+                                    query,
+                                    text: searchResponse.tavily?.answer ||
+                                          "Combined search results: " +
+                                          searchResponse.combinedResults.map(r =>
+                                            `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
+                                          ).join("\n\n"),
+                                });
+                            }
+                            // Handle Tavily-only results
+                            else if (searchResponse.provider === "tavily" && searchResponse.results?.length) {
+                                elizaLogger.info(`Got Tavily-only results for "${query}" (${searchResponse.results.length} results)`);
+
+                                resolve({
+                                    query,
+                                    text: searchResponse.answer ||
+                                          searchResponse.results.map(r =>
+                                            `${r.title}: ${r.content?.substring(0, 200)}...`
+                                          ).join("\n\n"),
+                                });
+                            }
+                            // Handle Exa-only results
+                            else if (searchResponse.provider === "exa" && searchResponse.results?.length) {
+                                elizaLogger.info(`Got Exa-only results for "${query}" (${searchResponse.results.length} results)`);
+
+                                resolve({
+                                    query,
+                                    text: searchResponse.results.map(r =>
+                                        `${r.title}: ${r.text?.substring(0, 200) || r.content?.substring(0, 200)}...`
+                                    ).join("\n\n"),
+                                });
+                            }
+                            else {
+                                elizaLogger.warn(`No relevant results found for "${query}"`);
+                                resolve({
+                                    query,
+                                    text: "No relevant results found.",
+                                });
+                            }
+                        } else {
+                            elizaLogger.error(`Search failed or returned no data for "${query}"`);
+                            resolve({
+                                query,
+                                text: "Search failed to return results."
+                            });
+                        }
+                    } catch (error) {
+                        elizaLogger.error(`Error during search for "${query}":`, error);
                         resolve({
                             query,
-                            text: searchResponse.answer ?? "Could not get an aswer",
+                            text: "Error during search: " + error.message
                         });
-                    } else {
-                        elizaLogger.error("search failed or returned no data.");
-                        resolve(null);
                     }
                 }));
             }
             const negativeQueryResults = await Promise.all(promises);
+            elizaLogger.info("Completed negative query searches");
 
             // Reason
             state["queryResults"] = queryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
             state["negativeQueryResults"] = negativeQueryResults.map(r => `${r.query}: ${r.text}\n\n`).join("\n");
 
+            elizaLogger.info("Starting decision making process");
             const decisionContext = composeContext({
                 state,
                 template: decisionMakingTemplate,
@@ -1120,6 +1242,8 @@ export class DirectClient {
                 context: decisionContext,
                 modelClass: ModelClass.LARGE,
             });
+            elizaLogger.info("Positive decision completed");
+
             const negativeDecisionContext = composeContext({
                 state,
                 template: negativeDecisionMakingTemplate,
@@ -1129,10 +1253,12 @@ export class DirectClient {
                 context: negativeDecisionContext,
                 modelClass: ModelClass.LARGE,
             });
+            elizaLogger.info("Negative decision completed");
 
             // Aggregation
             state["decision"] = decision;
             state["negativeDecision"] = negativeDecision;
+            elizaLogger.info("Starting final aggregation");
             const aggregatorContext = composeContext({
                 state,
                 template: aggregatorTemplate,
@@ -1144,14 +1270,16 @@ export class DirectClient {
             });
 
             if (!aggregationResult) {
+                elizaLogger.error("No response from aggregation");
                 res.status(500).send(
                     "No response from generateMessageResponse"
                 );
                 return;
             }
 
+            elizaLogger.info("Claim verification completed successfully");
             res.json(aggregationResult);
-        })
+        });
     }
 
     // agent/src/index.ts:startAgent calls this
@@ -1282,12 +1410,6 @@ Respond in the following way:
 \`\`\`
 `;
 
-
-
-
-
-
-
 const negativeQueryGeneratorTemplate = `
 # About {{agentName}}
 {{bio}}
@@ -1343,7 +1465,6 @@ Respond in the following way:
 }
 \`\`\`
 `;
-
 
 const aggregatorTemplate = `
 # About {{agentName}}
