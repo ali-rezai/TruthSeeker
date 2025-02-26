@@ -501,9 +501,6 @@ export class WebSearchService extends Service {
                 throw new Error("No search providers are available");
             }
 
-            // In the WebSearchService.search method, add debug logging for the usedProviders array
-            elizaLogger.debug(`Used providers for "${query}": ${usedProviders.join(', ')}`);
-
             // Return combined results with list of used providers
             return {
                 ...results,
