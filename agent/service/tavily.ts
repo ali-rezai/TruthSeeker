@@ -9,6 +9,8 @@ export type ExaClient = Exa;
 export enum SearchProvider {
     TAVILY = "tavily",
     EXA = "exa",
+    PERPLEXITY = "perplexity",
+    SERPER = "serper",
     BOTH = "both" // default
 }
 
@@ -112,6 +114,10 @@ export class TavilyProvider implements ISearchProvider {
             provider: SearchProvider.TAVILY
         };
     }
+
+    get client(): TavilyClient {
+        return this.client;
+    }
 }
 
 // Exa search provider implementation
@@ -168,6 +174,209 @@ export class ExaProvider implements ISearchProvider {
     }
 }
 
+// Perplexity search provider implementation
+export class PerplexityProvider implements ISearchProvider {
+    name = SearchProvider.PERPLEXITY;
+    private client: any = null;
+    private apiKey: string;
+    private rateLimiter = new RateLimiter(5); // 5 requests per second
+
+    constructor(apiKey: string) {
+        if (!apiKey) {
+            elizaLogger.warn("PERPLEXITY_API_KEY is not set, Perplexity search will not be available");
+            return;
+        }
+        this.apiKey = apiKey;
+        this.client = true; // Just a flag to indicate the provider is available
+        elizaLogger.info("Initialized Perplexity search provider");
+    }
+
+    isAvailable(): boolean {
+        return !!this.client;
+    }
+
+    async search(query: string, options?: any): Promise<any> {
+        if (!this.isAvailable()) {
+            throw new Error("Perplexity client is not initialized. Make sure PERPLEXITY_API_KEY is set.");
+        }
+
+        try {
+            elizaLogger.debug(`Scheduling Perplexity search for: "${query}" (with rate limiting)`);
+            // Use rate limiter for Perplexity API calls
+            const response = await this.rateLimiter.schedule(async () => {
+                elizaLogger.debug(`Executing Perplexity search for: "${query}"`);
+
+                const requestOptions = {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: options?.model || "sonar",
+                        messages: [
+                            {
+                                role: "system",
+                                content: options?.systemPrompt || "Be precise and concise. Provide factual information with sources."
+                            },
+                            {
+                                role: "user",
+                                content: query
+                            }
+                        ],
+                        max_tokens: options?.maxTokens || 500,
+                        temperature: options?.temperature || 0.2,
+                        top_p: options?.topP || 0.9,
+                        return_related_questions: options?.returnRelatedQuestions || false,
+                        search_recency_filter: options?.recencyFilter || null,
+                        stream: false
+                    })
+                };
+
+                const fetchResponse = await fetch('https://api.perplexity.ai/chat/completions', requestOptions);
+                if (!fetchResponse.ok) {
+                    throw new Error(`Perplexity API error: ${fetchResponse.status} ${fetchResponse.statusText}`);
+                }
+
+                const result = await fetchResponse.json();
+                elizaLogger.debug(`Perplexity search completed for: "${query}"`);
+                return result;
+            });
+
+            // Format the response to match the expected structure
+            const formattedResults = response.citations ? response.citations.map((url, index) => ({
+                title: `Result ${index + 1}`,
+                url: url,
+                content: response.choices[0].message.content,
+                score: 1.0 - (index * 0.1), // Simple scoring based on citation order
+                source: SearchProvider.PERPLEXITY
+            })) : [];
+
+            return {
+                results: formattedResults,
+                answer: response.choices[0].message.content,
+                citations: response.citations || [],
+                provider: SearchProvider.PERPLEXITY,
+                raw: response
+            };
+        } catch (error) {
+            elizaLogger.error(`Perplexity search error for "${query}":`, error);
+            throw error;
+        }
+    }
+}
+
+// Serper.dev search provider implementation
+export class SerperProvider implements ISearchProvider {
+    name = SearchProvider.SERPER;
+    private client: any = null;
+    private apiKey: string;
+    private rateLimiter = new RateLimiter(5); // 5 requests per second
+
+    constructor(apiKey: string) {
+        if (!apiKey) {
+            elizaLogger.warn("SERPER_API_KEY is not set, Serper.dev search will not be available");
+            return;
+        }
+        this.apiKey = apiKey;
+        this.client = true; // Just a flag to indicate the provider is available
+        elizaLogger.info("Initialized Serper.dev search provider");
+    }
+
+    isAvailable(): boolean {
+        return !!this.client;
+    }
+
+    async search(query: string, options?: any): Promise<any> {
+        if (!this.isAvailable()) {
+            throw new Error("Serper.dev client is not initialized. Make sure SERPER_API_KEY is set.");
+        }
+
+        try {
+            elizaLogger.debug(`Scheduling Serper.dev search for: "${query}" (with rate limiting)`);
+            // Use rate limiter for Serper.dev API calls
+            const response = await this.rateLimiter.schedule(async () => {
+                elizaLogger.debug(`Executing Serper.dev search for: "${query}"`);
+
+                const myHeaders = new Headers();
+                myHeaders.append("X-API-KEY", this.apiKey);
+                myHeaders.append("Content-Type", "application/json");
+
+                const requestOptions = {
+                    method: "POST",
+                    headers: myHeaders,
+                    body: JSON.stringify({
+                        q: query,
+                        gl: options?.gl || "us",
+                        hl: options?.hl || "en",
+                        autocorrect: options?.autocorrect !== undefined ? options.autocorrect : true,
+                        page: options?.page || 1,
+                        type: options?.type || "search"
+                    })
+                };
+
+                const fetchResponse = await fetch("https://google.serper.dev/search", requestOptions);
+                if (!fetchResponse.ok) {
+                    throw new Error(`Serper.dev API error: ${fetchResponse.status} ${fetchResponse.statusText}`);
+                }
+
+                const result = await fetchResponse.json();
+                elizaLogger.debug(`Serper.dev search completed for: "${query}"`);
+                return result;
+            });
+
+            // Format the response to match the expected structure
+            const formattedResults = [];
+
+            // Add organic results
+            if (response.organic && response.organic.length > 0) {
+                response.organic.forEach((item, index) => {
+                    formattedResults.push({
+                        title: item.title,
+                        url: item.link,
+                        content: item.snippet,
+                        score: 1.0 - (index * 0.05), // Simple scoring based on position
+                        source: SearchProvider.SERPER
+                    });
+                });
+            }
+
+            // Add knowledge graph if available
+            if (response.knowledgeGraph) {
+                formattedResults.push({
+                    title: response.knowledgeGraph.title || "Knowledge Graph",
+                    url: response.knowledgeGraph.descriptionLink || "",
+                    content: response.knowledgeGraph.description || "",
+                    score: 1.0, // Give knowledge graph high score
+                    source: SearchProvider.SERPER
+                });
+            }
+
+            // Add people also ask if available
+            if (response.peopleAlsoAsk && response.peopleAlsoAsk.length > 0) {
+                response.peopleAlsoAsk.forEach((item, index) => {
+                    formattedResults.push({
+                        title: item.question,
+                        url: item.link,
+                        content: item.snippet,
+                        score: 0.8 - (index * 0.05), // Lower score than organic results
+                        source: SearchProvider.SERPER
+                    });
+                });
+            }
+
+            return {
+                results: formattedResults,
+                provider: SearchProvider.SERPER,
+                raw: response
+            };
+        } catch (error) {
+            elizaLogger.error(`Serper.dev search error for "${query}":`, error);
+            throw error;
+        }
+    }
+}
+
 export class WebSearchService extends Service {
     private providers: Map<string, ISearchProvider> = new Map();
 
@@ -187,6 +396,24 @@ export class WebSearchService extends Service {
             const exaProvider = new ExaProvider(exaApiKey);
             if (exaProvider.isAvailable()) {
                 this.providers.set(SearchProvider.EXA, exaProvider);
+            }
+        }
+
+        // Initialize Perplexity provider
+        const perplexityApiKey = runtime.getSetting("PERPLEXITY_API_KEY") as string;
+        if (perplexityApiKey) {
+            const perplexityProvider = new PerplexityProvider(perplexityApiKey);
+            if (perplexityProvider.isAvailable()) {
+                this.providers.set(SearchProvider.PERPLEXITY, perplexityProvider);
+            }
+        }
+
+        // Initialize Serper.dev provider
+        const serperApiKey = runtime.getSetting("SERPER_API_KEY") as string;
+        if (serperApiKey) {
+            const serperProvider = new SerperProvider(serperApiKey);
+            if (serperProvider.isAvailable()) {
+                this.providers.set(SearchProvider.SERPER, serperProvider);
             }
         }
 
@@ -298,6 +525,22 @@ export class WebSearchService extends Service {
         options?: any,
     ): Promise<any> {
         return this.search(query, { ...options, provider: SearchProvider.EXA });
+    }
+
+    // Dedicated method for Perplexity search
+    async searchPerplexity(
+        query: string,
+        options?: any,
+    ): Promise<any> {
+        return this.search(query, { ...options, provider: SearchProvider.PERPLEXITY });
+    }
+
+    // Dedicated method for Serper.dev search
+    async searchSerper(
+        query: string,
+        options?: any,
+    ): Promise<any> {
+        return this.search(query, { ...options, provider: SearchProvider.SERPER });
     }
 }
 

@@ -85,6 +85,7 @@
     "dotenv": "^16.4.7",
     "exa-js": "^1.4.10",
     "langdetect": "^0.2.1",
+    "node-fetch": "^3.3.2",
     "ollama-ai-provider": "0.16.1",
     "optional": "0.1.4",
     "pnpm": "9.15.0",
