@@ -1064,63 +1064,53 @@ export class DirectClient {
 
             const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
 
-            // Check which search providers are available
-            const tavilyAvailable = !!webSearchService.tavilyClient;
-            const exaAvailable = !!webSearchService.exaClient;
-            elizaLogger.info(`Search providers available - Tavily: ${tavilyAvailable}, Exa: ${exaAvailable}`);
+            // Get available search providers
+            const availableProviders = Array.from(webSearchService.providers?.keys() || []);
+            elizaLogger.info(`Available search providers: ${availableProviders.join(', ') || 'none'}`);
 
-            // Get Results - UPDATED to use both search providers
+            // Get Results using all available providers
             let promises = [];
             for (const query of blueTeamQueries) {
                 promises.push(new Promise(async (resolve, reject) => {
                     try {
                         elizaLogger.info(`Executing Blue team query: "${query}"`);
 
-                        // Use both Tavily and Exa if available
+                        // Use all available providers
                         const searchResponse = await webSearchService.search(
                             query,
-                            { provider: "both" } // Use both Tavily and Exa
+                            { provider: "both" } // Use all available providers
                         );
 
-                        elizaLogger.info(`Search provider used for "${query}": ${searchResponse.provider || 'unknown'}`);
+                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${searchResponse.provider}`);
 
                         if (searchResponse) {
-                            // Handle combined results if both providers were used
+                            // Handle combined results from multiple providers
                             if (searchResponse.provider === "both" && searchResponse.combinedResults) {
-                                elizaLogger.info(`Got combined results from both providers for "${query}"`);
-                                elizaLogger.debug(`Tavily results count: ${searchResponse.tavily?.results?.length || 0}`);
-                                elizaLogger.debug(`Exa results count: ${searchResponse.exa?.results?.length || 0}`);
+                                const providerNames = Object.keys(searchResponse)
+                                    .filter(key => key !== 'provider' && key !== 'combinedResults')
+                                    .join(', ');
+
+                                elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
 
                                 resolve({
                                     query,
                                     text: searchResponse.tavily?.answer ||
-                                          "Combined search results: " +
+                                          `Search results from ${providerNames}: ` +
                                           searchResponse.combinedResults.map(r =>
                                             `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
                                           ).join("\n\n"),
                                 });
                             }
-                            // Handle Tavily-only results
-                            else if (searchResponse.provider === "tavily" && searchResponse.results?.length) {
-                                elizaLogger.info(`Got Tavily-only results for "${query}" (${searchResponse.results.length} results)`);
+                            // Handle single provider results
+                            else if (searchResponse.results?.length) {
+                                elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
 
                                 resolve({
                                     query,
                                     text: searchResponse.answer ||
                                           searchResponse.results.map(r =>
-                                            `${r.title}: ${r.content?.substring(0, 200)}...`
+                                            `${r.title}: ${r.content?.substring(0, 200) || r.text?.substring(0, 200)}...`
                                           ).join("\n\n"),
-                                });
-                            }
-                            // Handle Exa-only results
-                            else if (searchResponse.provider === "exa" && searchResponse.results?.length) {
-                                elizaLogger.info(`Got Exa-only results for "${query}" (${searchResponse.results.length} results)`);
-
-                                resolve({
-                                    query,
-                                    text: searchResponse.results.map(r =>
-                                        `${r.title}: ${r.text?.substring(0, 200) || r.content?.substring(0, 200)}...`
-                                    ).join("\n\n"),
                                 });
                             }
                             else {
@@ -1155,51 +1145,42 @@ export class DirectClient {
                     try {
                         elizaLogger.info(`Executing Red team query: "${query}"`);
 
-                        // Use both Tavily and Exa if available
+                        // Use all available providers
                         const searchResponse = await webSearchService.search(
                             query,
-                            { provider: "both" } // Use both Tavily and Exa
+                            { provider: "both" } // Use all available providers
                         );
 
-                        elizaLogger.info(`Search provider used for "${query}": ${searchResponse.provider || 'unknown'}`);
+                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${searchResponse.provider}`);
 
                         if (searchResponse) {
-                            // Handle combined results if both providers were used
+                            // Handle combined results from multiple providers
                             if (searchResponse.provider === "both" && searchResponse.combinedResults) {
-                                elizaLogger.info(`Got combined results from both providers for "${query}"`);
-                                elizaLogger.debug(`Tavily results count: ${searchResponse.tavily?.results?.length || 0}`);
-                                elizaLogger.debug(`Exa results count: ${searchResponse.exa?.results?.length || 0}`);
+                                const providerNames = Object.keys(searchResponse)
+                                    .filter(key => key !== 'provider' && key !== 'combinedResults')
+                                    .join(', ');
+
+                                elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
 
                                 resolve({
                                     query,
                                     text: searchResponse.tavily?.answer ||
-                                          "Combined search results: " +
+                                          `Search results from ${providerNames}: ` +
                                           searchResponse.combinedResults.map(r =>
                                             `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
                                           ).join("\n\n"),
                                 });
                             }
-                            // Handle Tavily-only results
-                            else if (searchResponse.provider === "tavily" && searchResponse.results?.length) {
-                                elizaLogger.info(`Got Tavily-only results for "${query}" (${searchResponse.results.length} results)`);
+                            // Handle single provider results
+                            else if (searchResponse.results?.length) {
+                                elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
 
                                 resolve({
                                     query,
                                     text: searchResponse.answer ||
                                           searchResponse.results.map(r =>
-                                            `${r.title}: ${r.content?.substring(0, 200)}...`
+                                            `${r.title}: ${r.content?.substring(0, 200) || r.text?.substring(0, 200)}...`
                                           ).join("\n\n"),
-                                });
-                            }
-                            // Handle Exa-only results
-                            else if (searchResponse.provider === "exa" && searchResponse.results?.length) {
-                                elizaLogger.info(`Got Exa-only results for "${query}" (${searchResponse.results.length} results)`);
-
-                                resolve({
-                                    query,
-                                    text: searchResponse.results.map(r =>
-                                        `${r.title}: ${r.text?.substring(0, 200) || r.content?.substring(0, 200)}...`
-                                    ).join("\n\n"),
                                 });
                             }
                             else {
