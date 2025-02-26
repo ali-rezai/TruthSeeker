@@ -1081,7 +1081,13 @@ export class DirectClient {
                             { provider: "both" } // Use all available providers
                         );
 
-                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${searchResponse.provider}`);
+                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${
+                            searchResponse.usedProviders && searchResponse.usedProviders.length > 0
+                                ? searchResponse.usedProviders.join(', ')
+                                : searchResponse.provider
+                        }`);
+
+                        elizaLogger.debug(`Search response details: provider=${searchResponse.provider}, usedProviders=${JSON.stringify(searchResponse.usedProviders || [])}`);
 
                         if (searchResponse) {
                             // Handle combined results from multiple providers
@@ -1151,7 +1157,13 @@ export class DirectClient {
                             { provider: "both" } // Use all available providers
                         );
 
-                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${searchResponse.provider}`);
+                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${
+                            searchResponse.usedProviders && searchResponse.usedProviders.length > 0
+                                ? searchResponse.usedProviders.join(', ')
+                                : searchResponse.provider
+                        }`);
+
+                        elizaLogger.debug(`Search response details: provider=${searchResponse.provider}, usedProviders=${JSON.stringify(searchResponse.usedProviders || [])}`);
 
                         if (searchResponse) {
                             // Handle combined results from multiple providers

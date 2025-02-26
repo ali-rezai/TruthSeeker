@@ -471,12 +471,14 @@ export class WebSearchService extends Service {
             const results = {};
             const combinedResults = [];
             let availableProviders = 0;
+            const usedProviders = [];
 
             for (const [name, providerInstance] of this.providers.entries()) {
                 try {
                     const providerResult = await providerInstance.search(query, options);
                     results[name] = providerResult;
                     availableProviders++;
+                    usedProviders.push(name);
 
                     // Add to combined results
                     if (providerResult.results) {
@@ -499,10 +501,14 @@ export class WebSearchService extends Service {
                 throw new Error("No search providers are available");
             }
 
-            // Return combined results
+            // In the WebSearchService.search method, add debug logging for the usedProviders array
+            elizaLogger.debug(`Used providers for "${query}": ${usedProviders.join(', ')}`);
+
+            // Return combined results with list of used providers
             return {
                 ...results,
                 provider: SearchProvider.BOTH,
+                usedProviders: usedProviders,
                 combinedResults
             };
         } catch (error) {
