@@ -65,6 +65,7 @@ export default function ClaimVerifier() {
     if (!claim.trim()) return
 
     setIsVerifying(true)
+    setResult(null)
 
     let aggregator: any
     try {

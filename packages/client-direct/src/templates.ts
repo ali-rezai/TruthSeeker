@@ -68,7 +68,8 @@ You have now received the results of the queries so using the data you have gath
 If you need to change your mind on the claim's truthfulness, it's ok to do so.
 
 Care about the smallest of details both in the claims and in the information you have gathered.
-To use "depends" as a decision, the thing it depends on must NOT be provided inside the claim itself. Otherwise since you have the data already you HAVE to make a decision.
+If your decision would change depending on something that is not provided in the claim but is key to your decision, use "depends" as your decision.
+Do not rely on "implied" data in the claim. If something is missing from the claim, it is missing do not make assumptions.
 
 # Your Query Results
 {{queryResults}}
@@ -109,7 +110,8 @@ The Red team went to query data assuming the claim was false and then made a dec
 Your job is to take the results from both teams and make a final decision.
 
 Care about the smallest of details both in the claims and in the information you have gathered.
-To use "depends" as a decision, the thing it depends on must NOT be provided inside the claim itself. Otherwise since you have the data already you HAVE to make a decision.
+If your decision would change depending on something that is not provided in the claim but is key to your decision, use "depends" as your decision.
+Do not rely on "implied" data in the claim. If something is missing from the claim, it is missing do not make assumptions.
 
 # Blue Team
 ## Queries and Information Gathered
