@@ -42,6 +42,66 @@ const verifyTeam = async (claim: string, team: "blue" | "red", prevTeamInformati
   return response.data
 }
 
+const verifyAggregateWithProgress = async (
+  claim: string,
+  blueTeamInformation?: string,
+  blueTeamDecision?: string,
+  redTeamInformation?: string,
+  redTeamDecision?: string,
+  setLogsFunction?: React.Dispatch<React.SetStateAction<string[]>>
+) => {
+  // Create a controller to abort the fetch if needed
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  try {
+    // Make the initial request to start the verification
+    const response = await axios.post("verify-claim-2-start", {
+      claim,
+      blueTeamInformation,
+      blueTeamDecision,
+      redTeamInformation,
+      redTeamDecision,
+    });
+
+    const verificationId = response.data.verificationId;
+
+    // Poll for updates
+    let completed = false;
+    let result = null;
+
+    while (!completed) {
+      // Wait a short time between polls
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Get the latest status
+      const statusResponse = await axios.get(`verify-claim-2-status/${verificationId}`, { signal });
+      const status = statusResponse.data;
+
+      // Add any new logs
+      if (status.logs && status.logs.length > 0 && setLogsFunction) {
+        setLogsFunction(prev => [...prev, ...status.logs]);
+      }
+
+      // Check if completed
+      if (status.completed) {
+        completed = true;
+        result = status.result;
+      }
+    }
+
+    return result;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('Fetch aborted');
+    } else {
+      throw error;
+    }
+  } finally {
+    controller.abort(); // Clean up
+  }
+};
+
 const verifyAggregate = async (
   claim: string,
   blueTeamInformation?: string,
@@ -76,52 +136,100 @@ export default function ClaimVerifier() {
     setLogs([])
     setResult(null)
 
-    let blueTeam, redTeam, aggregator;
-
     try {
-      // Blue team verification
-      blueTeam = await verifyTeam(claim, "blue")
-      // Add blue team logs to our state
-      if (blueTeam.logs && blueTeam.logs.length > 0) {
-        setLogs(prev => [...prev, ...blueTeam.logs])
-      }
+      // Start blue team verification
+      const blueTeamPromise = verifyTeamWithProgress(claim, "blue", undefined, undefined, setLogs);
 
-      // Red team verification
-      redTeam = await verifyTeam(claim, "red", blueTeam.queryResults, blueTeam.decision)
-      // Add red team logs to our state
-      if (redTeam.logs && redTeam.logs.length > 0) {
-        setLogs(prev => [...prev, ...redTeam.logs])
-      }
+      // Wait for blue team to finish
+      const blueTeam = await blueTeamPromise;
 
-      // For the final step, don't pass the logs from previous steps
-      // This prevents duplication
-      aggregator = await verifyAggregate(
+      // Start red team verification
+      const redTeamPromise = verifyTeamWithProgress(claim, "red", blueTeam.queryResults, blueTeam.decision, setLogs);
+
+      // Wait for red team to finish
+      const redTeam = await redTeamPromise;
+
+      // Final aggregation with progress
+      const aggregator = await verifyAggregateWithProgress(
         claim,
         blueTeam.queryResults,
         blueTeam.decision,
         redTeam.queryResults,
-        redTeam.decision
-      )
+        redTeam.decision,
+        setLogs
+      );
 
-      // Add final logs
-      if (aggregator.logs && aggregator.logs.length > 0) {
-        setLogs(prev => [...prev, ...aggregator.logs])
-      }
+      setResult({
+        decision: aggregator.decision,
+        confidence: aggregator.confidence,
+        reason: aggregator.reason,
+      });
     } catch (e) {
-      console.error('Error verifying claim:', e)
-      setLogs(prev => [...prev, `[error] Error verifying claim: ${e.message}`])
-      setIsVerifying(false)
-      return
+      console.error('Error verifying claim:', e);
+      setLogs(prev => [...prev, `[error] Error verifying claim: ${e.message}`]);
+    } finally {
+      setIsVerifying(false);
     }
+  };
 
-    setResult({
-      decision: aggregator.decision,
-      confidence: aggregator.confidence,
-      reason: aggregator.reason,
-    })
+  // Function to handle incremental updates
+  const verifyTeamWithProgress = async (
+    claim: string,
+    team: "blue" | "red",
+    prevTeamInformation?: string,
+    prevTeamDecision?: string,
+    setLogsFunction?: React.Dispatch<React.SetStateAction<string[]>>
+  ) => {
+    // Create a controller to abort the fetch if needed
+    const controller = new AbortController();
+    const { signal } = controller;
 
-    setIsVerifying(false)
-  }
+    try {
+      // Make the initial request to start the verification
+      const response = await axios.post("verify-claim-1-start", {
+        claim,
+        team,
+        prevTeamInformation,
+        prevTeamDecision,
+      });
+
+      const verificationId = response.data.verificationId;
+
+      // Poll for updates
+      let completed = false;
+      let result = null;
+
+      while (!completed) {
+        // Wait a short time between polls
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Get the latest status
+        const statusResponse = await axios.get(`verify-claim-1-status/${verificationId}`, { signal });
+        const status = statusResponse.data;
+
+        // Add any new logs
+        if (status.logs && status.logs.length > 0 && setLogsFunction) {
+          setLogsFunction(prev => [...prev, ...status.logs]);
+        }
+
+        // Check if completed
+        if (status.completed) {
+          completed = true;
+          result = status.result;
+        }
+      }
+
+      return result;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.log('Fetch aborted');
+      } else {
+        throw error;
+      }
+    } finally {
+      controller.abort(); // Clean up
+    }
+  };
 
   return (
     <div className="flex min-h-screen flex-col bg-black text-white">

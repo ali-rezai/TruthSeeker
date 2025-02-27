@@ -31,6 +31,7 @@ import { z } from "zod";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
 import { aggregatorTemplate, decisionTemplate, queryTemplate } from "./templates.ts";
+import { v4 as uuidv4 } from 'uuid';
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -116,6 +117,7 @@ export class DirectClient {
     public app: express.Application;
     private agents: Map<string, IAgentRuntime>; // container management
     private server: any; // Store server instance
+    private verifications: Map<string, any>; // Store for in-progress verifications
     public startAgent: Function; // Store startAgent functor
     public loadCharacterTryPath: Function; // Store loadCharacterTryPath functor
     public jsonToCharacter: Function; // Store jsonToCharacter functor
@@ -125,6 +127,7 @@ export class DirectClient {
         this.app = express();
         this.app.use(cors());
         this.agents = new Map();
+        this.verifications = new Map(); // Initialize the verifications map
 
         this.app.use(bodyParser.json());
         this.app.use(bodyParser.urlencoded({ extended: true }));
@@ -984,7 +987,7 @@ export class DirectClient {
             }
         });
 
-        this.app.post("/:agentId/verify-claim-1", async (req, res) => {
+        this.app.post("/:agentId/verify-claim-1-start", async (req, res) => {
             const agentId = req.params.agentId;
             const roomId = stringToUuid(
                 req.body.roomId ?? "default-room-" + agentId
@@ -993,120 +996,60 @@ export class DirectClient {
             const team = req.body.team ?? "blue";
             const prevTeamInformation = req.body.prevTeamInformation;
             const prevTeamDecision = req.body.prevTeamDecision;
-
-            const prevTeam: "blue" | "red" | null = prevTeamDecision ? (team == "blue" ? "red" : "blue") : null;
-
-            let runtime = this.agents.get(agentId);
-
-            // if runtime is null, look for runtime with the same name
-            if (!runtime) {
-                runtime = Array.from(this.agents.values()).find(
-                    (a) =>
-                        a.character.name.toLowerCase() ===
-                        agentId.toLowerCase()
-                );
-            }
-
-            if (!runtime) {
-                res.status(404).send("Agent not found");
-                return;
-            }
-
-            await runtime.ensureConnection(
-                userId,
-                roomId,
-                req.body.userName,
-                req.body.name,
-                "direct"
-            );
-
             const claim = req.body.claim;
-            // if empty text, directly return
+
             if (!claim) {
-                res.json([]);
+                res.status(400).send("No claim provided");
                 return;
             }
 
-            // Create an array to store logs
-            const logs: string[] = [];
-            const logMessage = (message: string) => {
-                elizaLogger.info(message);
-                logs.push(`[${team}] ${message}`);
-            };
+            // Create a verification ID
+            const verificationId = uuidv4();
 
-            logMessage(`Starting claim verification for: "${claim}"`);
-
-            let state = await runtime.composeState({
-                content: {
-                    text: "",
-                },
-                userId,
+            // Initialize the verification state
+            this.verifications.set(verificationId, {
+                agentId,
                 roomId,
-                agentId: runtime.agentId
-            }, {
-                agentName: runtime.character.name,
+                userId,
+                team,
+                prevTeamInformation,
+                prevTeamDecision,
                 claim,
+                logs: [],
+                completed: false,
+                result: null,
+                lastUpdated: Date.now()
             });
 
-            // Generate queries
-            const queryContext = composeContext({
-                state,
-                template: queryTemplate(team, prevTeam, prevTeamInformation, prevTeamDecision),
-            });
-            const queries = (await generateMessageResponse({
-                runtime: runtime,
-                context: queryContext,
-                modelClass: ModelClass.LARGE,
-            }) as any).queries as string[];
+            // Start the verification process in the background
+            this.runVerification(verificationId);
 
-            if (!queries) {
-                res.status(500).send("No queries generated");
-                return;
-            }
-            logMessage(`Generated ${team} team queries: ${queries.join(', ')}`);
-
-            const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
-
-            // Get available search providers
-            const availableProviders = Array.from(webSearchService.providers?.keys() || []);
-            logMessage(`Available search providers: ${availableProviders.join(', ') || 'none'}`);
-
-            // Get Results using all available providers
-            const queryResults = await doWebSearch(queries, team, webSearchService, logMessage);
-            logMessage(`Completed ${team} team query searches`);
-
-            // Reason
-            state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
-
-            logMessage(`Starting ${team} team decision making process`);
-            let decisionTries = 0;
-
-            let decision = null;
-            while (decisionTries < 5) {
-                const decisionContext = composeContext({
-                    state,
-                    template: decisionTemplate(team, prevTeam, prevTeamInformation, prevTeamDecision),
-                });
-                decision = await generateMessageResponse({
-                    runtime: runtime,
-                    context: decisionContext,
-                    modelClass: ModelClass.LARGE,
-                });
-                if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
-                    logMessage(`${team} team decided to make additional queries: ${(decision.additional_queries as string[]).join(', ')}`);
-                    const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService, logMessage);
-                    state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
-                } else {
-                    break;
-                }
-                decisionTries++;
-            }
-
-            logMessage(`${team} team decision completed`);
-            res.json({decision, queryResults: state["queryResults"], logs});
+            // Return the verification ID immediately
+            res.json({ verificationId });
         });
 
-        this.app.post("/:agentId/verify-claim-2", async (req, res) => {
+        this.app.get("/:agentId/verify-claim-1-status/:verificationId", (req, res) => {
+            const verificationId = req.params.verificationId;
+            const verification = this.verifications.get(verificationId);
+
+            if (!verification) {
+                res.status(404).send("Verification not found");
+                return;
+            }
+
+            // Return the current status
+            res.json({
+                completed: verification.completed,
+                logs: verification.logs,
+                result: verification.result
+            });
+
+            // Clear logs after sending them
+            verification.logs = [];
+            this.verifications.set(verificationId, verification);
+        });
+
+        this.app.post("/:agentId/verify-claim-2-start", async (req, res) => {
             const agentId = req.params.agentId;
             const roomId = stringToUuid(
                 req.body.roomId ?? "default-room-" + agentId
@@ -1116,82 +1059,59 @@ export class DirectClient {
             const redTeamDecision = req.body.redTeamDecision;
             const blueTeamInformation = req.body.blueTeamInformation;
             const redTeamInformation = req.body.redTeamInformation;
-            const blueLogs = req.body.blueLogs || [];
-            const redLogs = req.body.redLogs || [];
-
-            // Create an array to store ONLY NEW logs (not the ones from previous steps)
-            const logs: string[] = [];
-            const logMessage = (message: string) => {
-                elizaLogger.info(message);
-                logs.push(`[final] ${message}`);
-            };
-
-            let runtime = this.agents.get(agentId);
-
-            // if runtime is null, look for runtime with the same name
-            if (!runtime) {
-                runtime = Array.from(this.agents.values()).find(
-                    (a) =>
-                        a.character.name.toLowerCase() ===
-                        agentId.toLowerCase()
-                );
-            }
-
-            if (!runtime) {
-                res.status(404).send("Agent not found");
-                return;
-            }
-
-            await runtime.ensureConnection(
-                userId,
-                roomId,
-                req.body.userName,
-                req.body.name,
-                "direct"
-            );
-
             const claim = req.body.claim;
-            // if empty text, directly return
+
             if (!claim) {
-                res.json([]);
+                res.status(400).send("No claim provided");
                 return;
             }
 
-            let state = await runtime.composeState({
-                content: {
-                    text: "",
-                },
-                userId,
+            // Create a verification ID
+            const verificationId = uuidv4();
+
+            // Initialize the verification state
+            this.verifications.set(verificationId, {
+                agentId,
                 roomId,
-                agentId: runtime.agentId
-            }, {
-                agentName: runtime.character.name,
+                userId,
+                blueTeamDecision,
+                redTeamDecision,
+                blueTeamInformation,
+                redTeamInformation,
                 claim,
+                logs: [],
+                completed: false,
+                result: null,
+                lastUpdated: Date.now(),
+                type: 'aggregation'
             });
 
-            // Aggregation
-            logMessage("Starting final aggregation");
-            const aggregatorContext = composeContext({
-                state,
-                template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
-            });
-            const aggregationResult = await generateMessageResponse({
-                runtime: runtime,
-                context: aggregatorContext,
-                modelClass: ModelClass.LARGE,
-            });
+            // Start the aggregation process in the background
+            this.runAggregation(verificationId);
 
-            if (!aggregationResult) {
-                elizaLogger.error("No response from aggregation");
-                res.status(500).send(
-                    "No response from generateMessageResponse"
-                );
+            // Return the verification ID immediately
+            res.json({ verificationId });
+        });
+
+        this.app.get("/:agentId/verify-claim-2-status/:verificationId", (req, res) => {
+            const verificationId = req.params.verificationId;
+            const verification = this.verifications.get(verificationId);
+
+            if (!verification) {
+                res.status(404).send("Verification not found");
                 return;
             }
 
-            // Only return the new logs, not the ones from previous steps
-            logMessage("Claim verification completed successfully");
-            res.json({...aggregationResult, logs});
+            // Return the current status
+            res.json({
+                completed: verification.completed,
+                logs: verification.logs,
+                result: verification.result
+            });
+
+            // Clear logs after sending them
+            verification.logs = [];
+            this.verifications.set(verificationId, verification);
         });
     }
 
@@ -1240,6 +1160,257 @@ export class DirectClient {
             this.server.close(() => {
                 elizaLogger.success("Server stopped");
             });
+        }
+    }
+
+    async runVerification(verificationId) {
+        const verification = this.verifications.get(verificationId);
+        if (!verification) return;
+
+        const { agentId, roomId, userId, team, prevTeamInformation, prevTeamDecision, claim } = verification;
+
+        try {
+            let runtime = this.agents.get(agentId);
+            if (!runtime) {
+                runtime = Array.from(this.agents.values()).find(
+                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
+                );
+            }
+
+            if (!runtime) {
+                verification.logs.push(`[${team}] Error: Agent not found`);
+                verification.completed = true;
+                this.verifications.set(verificationId, verification);
+                return;
+            }
+
+            await runtime.ensureConnection(userId, roomId, null, null, "direct");
+
+            // Log function that updates the verification state
+            const logMessage = (message) => {
+                elizaLogger.info(message);
+                const current = this.verifications.get(verificationId);
+                if (current) {
+                    current.logs.push(`[${team}] ${message}`);
+                    current.lastUpdated = Date.now();
+                    this.verifications.set(verificationId, current);
+                }
+            };
+
+            logMessage(`Starting claim verification for: "${claim}"`);
+
+            let state = await runtime.composeState({
+                content: { text: "" },
+                userId,
+                roomId,
+                agentId: runtime.agentId
+            }, {
+                agentName: runtime.character.name,
+                claim,
+            });
+
+            // Generate queries
+            logMessage("Generating search queries...");
+            const queryContext = composeContext({
+                state,
+                template: queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
+            });
+
+            const queries = (await generateMessageResponse({
+                runtime: runtime,
+                context: queryContext,
+                modelClass: ModelClass.LARGE,
+            }) as any).queries as string[];
+
+            if (!queries) {
+                logMessage("Error: No queries generated");
+                verification.completed = true;
+                this.verifications.set(verificationId, verification);
+                return;
+            }
+
+            logMessage(`Generated ${team} team queries: ${queries.join(', ')}`);
+
+            const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
+            const availableProviders = Array.from(webSearchService.providers?.keys() || []);
+            logMessage(`Available search providers: ${availableProviders.join(', ') || 'none'}`);
+
+            // Get Results using all available providers
+            logMessage("Searching for information...");
+            const queryResults = await doWebSearch(queries, team, webSearchService, logMessage);
+            logMessage(`Completed ${team} team query searches`);
+
+            // Reason
+            state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
+
+            logMessage(`Starting ${team} team decision making process`);
+            let decisionTries = 0;
+
+            let decision = null;
+            while (decisionTries < 5) {
+                const decisionContext = composeContext({
+                    state,
+                    template: decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
+                });
+
+                decision = await generateMessageResponse({
+                    runtime: runtime,
+                    context: decisionContext,
+                    modelClass: ModelClass.LARGE,
+                });
+
+                if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
+                    logMessage(`${team} team decided to make additional queries: ${(decision.additional_queries as string[]).join(', ')}`);
+                    const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService, logMessage);
+                    state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
+                } else {
+                    break;
+                }
+                decisionTries++;
+            }
+
+            logMessage(`${team} team decision completed`);
+
+            // Update verification with the result
+            verification.result = { decision, queryResults: state["queryResults"] };
+            verification.completed = true;
+            this.verifications.set(verificationId, verification);
+
+            // Clean up old verifications periodically
+            this.cleanupVerifications();
+
+        } catch (error) {
+            const current = this.verifications.get(verificationId);
+            if (current) {
+                current.logs.push(`[${team}] Error: ${error.message}`);
+                current.completed = true;
+                this.verifications.set(verificationId, current);
+            }
+        }
+    }
+
+    // Add this method to clean up old verifications
+    cleanupVerifications() {
+        const now = Date.now();
+        const maxAge = 30 * 60 * 1000; // 30 minutes
+
+        for (const [id, verification] of this.verifications.entries()) {
+            if (verification.completed && now - verification.lastUpdated > maxAge) {
+                this.verifications.delete(id);
+            }
+        }
+    }
+
+    async runAggregation(verificationId) {
+        const verification = this.verifications.get(verificationId);
+        if (!verification) {
+            elizaLogger.error(`Verification not found for ID: ${verificationId}`);
+            return;
+        }
+
+        const {
+            agentId,
+            roomId,
+            userId,
+            claim,
+            blueTeamDecision,
+            redTeamDecision,
+            blueTeamInformation,
+            redTeamInformation
+        } = verification;
+
+        try {
+            elizaLogger.info(`Starting aggregation for verification ID: ${verificationId}`);
+
+            let runtime = this.agents.get(agentId);
+            if (!runtime) {
+                runtime = Array.from(this.agents.values()).find(
+                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
+                );
+            }
+
+            if (!runtime) {
+                elizaLogger.error(`Agent not found: ${agentId}`);
+                verification.logs.push(`[final] Error: Agent not found`);
+                verification.completed = true;
+                this.verifications.set(verificationId, verification);
+                return;
+            }
+
+            await runtime.ensureConnection(userId, roomId, null, null, "direct");
+
+            // Log function that updates the verification state
+            const logMessage = (message) => {
+                elizaLogger.info(message);
+                const current = this.verifications.get(verificationId);
+                if (current) {
+                    current.logs.push(`[final] ${message}`);
+                    current.lastUpdated = Date.now();
+                    this.verifications.set(verificationId, current);
+                }
+            };
+
+            logMessage(`Starting final aggregation for claim: "${claim}"`);
+
+            // Log the inputs to help debug
+            elizaLogger.debug(`Aggregation inputs:
+                blueTeamDecision: ${JSON.stringify(blueTeamDecision)}
+                redTeamDecision: ${JSON.stringify(redTeamDecision)}
+                blueTeamInformation length: ${blueTeamInformation ? blueTeamInformation.length : 0}
+                redTeamInformation length: ${redTeamInformation ? redTeamInformation.length : 0}
+            `);
+
+            let state = await runtime.composeState({
+                content: { text: "" },
+                userId,
+                roomId,
+                agentId: runtime.agentId
+            }, {
+                agentName: runtime.character.name,
+                claim,
+            });
+
+            // Aggregation
+            logMessage("Processing team decisions and evidence...");
+            const aggregatorContext = composeContext({
+                state,
+                template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
+            });
+
+            elizaLogger.debug("Calling generateMessageResponse for aggregation");
+            const aggregationResult = await generateMessageResponse({
+                runtime: runtime,
+                context: aggregatorContext,
+                modelClass: ModelClass.LARGE,
+            });
+
+            elizaLogger.debug(`Aggregation result: ${JSON.stringify(aggregationResult)}`);
+
+            if (!aggregationResult) {
+                logMessage("Error: No response from aggregation");
+                verification.completed = true;
+                this.verifications.set(verificationId, verification);
+                return;
+            }
+
+            logMessage("Claim verification completed successfully");
+
+            // Update verification with the result
+            verification.result = aggregationResult;
+            verification.completed = true;
+            this.verifications.set(verificationId, verification);
+
+            // Clean up old verifications periodically
+            this.cleanupVerifications();
+
+        } catch (error) {
+            elizaLogger.error(`Error in runAggregation: ${error.message}`, error);
+            const current = this.verifications.get(verificationId);
+            if (current) {
+                current.logs.push(`[final] Error: ${error.message}`);
+                current.completed = true;
+                this.verifications.set(verificationId, current);
+            }
         }
     }
 }
