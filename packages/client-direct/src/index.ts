@@ -1027,7 +1027,14 @@ export class DirectClient {
                 return;
             }
 
-            elizaLogger.info(`Starting claim verification for: "${claim}"`);
+            // Create an array to store logs
+            const logs: string[] = [];
+            const logMessage = (message: string) => {
+                elizaLogger.info(message);
+                logs.push(`[${team}] ${message}`);
+            };
+
+            logMessage(`Starting claim verification for: "${claim}"`);
 
             let state = await runtime.composeState({
                 content: {
@@ -1056,22 +1063,22 @@ export class DirectClient {
                 res.status(500).send("No queries generated");
                 return;
             }
-            elizaLogger.info(`Generated ${team} team queries:`, queries);
+            logMessage(`Generated ${team} team queries: ${queries.join(', ')}`);
 
             const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
 
             // Get available search providers
             const availableProviders = Array.from(webSearchService.providers?.keys() || []);
-            elizaLogger.info(`Available search providers: ${availableProviders.join(', ') || 'none'}`);
+            logMessage(`Available search providers: ${availableProviders.join(', ') || 'none'}`);
 
             // Get Results using all available providers
-            const queryResults = await doWebSearch(queries, team, webSearchService);
-            elizaLogger.info(`Completed ${team} team query searches`);
+            const queryResults = await doWebSearch(queries, team, webSearchService, logMessage);
+            logMessage(`Completed ${team} team query searches`);
 
             // Reason
             state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
 
-            elizaLogger.info(`Starting ${team} team decision making process`);
+            logMessage(`Starting ${team} team decision making process`);
             let decisionTries = 0;
 
             let decision = null;
@@ -1086,8 +1093,8 @@ export class DirectClient {
                     modelClass: ModelClass.LARGE,
                 });
                 if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
-                    elizaLogger.info(`${team} team decided to make additional queries`, decision);
-                    const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService);
+                    logMessage(`${team} team decided to make additional queries: ${(decision.additional_queries as string[]).join(', ')}`);
+                    const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService, logMessage);
                     state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
                 } else {
                     break;
@@ -1095,8 +1102,8 @@ export class DirectClient {
                 decisionTries++;
             }
 
-            elizaLogger.info(`${team} team decision completed`);
-            res.json({decision, queryResults: state["queryResults"]});
+            logMessage(`${team} team decision completed`);
+            res.json({decision, queryResults: state["queryResults"], logs});
         });
 
         this.app.post("/:agentId/verify-claim-2", async (req, res) => {
@@ -1109,6 +1116,15 @@ export class DirectClient {
             const redTeamDecision = req.body.redTeamDecision;
             const blueTeamInformation = req.body.blueTeamInformation;
             const redTeamInformation = req.body.redTeamInformation;
+            const blueLogs = req.body.blueLogs || [];
+            const redLogs = req.body.redLogs || [];
+
+            // Create an array to store logs
+            const logs: string[] = [...blueLogs, ...redLogs];
+            const logMessage = (message: string) => {
+                elizaLogger.info(message);
+                logs.push(`[final] ${message}`);
+            };
 
             let runtime = this.agents.get(agentId);
 
@@ -1154,7 +1170,7 @@ export class DirectClient {
             });
 
             // Aggregation
-            elizaLogger.info("Starting final aggregation");
+            logMessage("Starting final aggregation");
             const aggregatorContext = composeContext({
                 state,
                 template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
@@ -1173,8 +1189,8 @@ export class DirectClient {
                 return;
             }
 
-            elizaLogger.info("Claim verification completed successfully");
-            res.json(aggregationResult);
+            logMessage("Claim verification completed successfully");
+            res.json({...aggregationResult, logs});
         });
     }
 
@@ -1251,12 +1267,13 @@ const directPlugin: Plugin = {
 };
 export default directPlugin;
 
-async function doWebSearch(queries: string[], team: "blue" | "red", webSearchService: any): Promise<{query: string, text: string}[]> {
+async function doWebSearch(queries: string[], team: "blue" | "red", webSearchService: any, logMessage?: (message: string) => void): Promise<{query: string, text: string}[]> {
     let promises = [];
     for (const query of queries) {
         promises.push(new Promise(async (resolve, reject) => {
             try {
-                elizaLogger.info(`Executing ${team} team query: "${query}"`);
+                if (logMessage) logMessage(`Executing ${team} team query: "${query}"`);
+                else elizaLogger.info(`Executing ${team} team query: "${query}"`);
 
                 // Use all available providers
                 const searchResponse = await webSearchService.search(
@@ -1264,11 +1281,19 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                     { provider: "both" } // Use all available providers
                 );
 
-                elizaLogger.info(`Search completed for "${query}" using provider(s): ${
-                    searchResponse.usedProviders && searchResponse.usedProviders.length > 0
-                        ? searchResponse.usedProviders.join(', ')
-                        : searchResponse.provider
-                }`);
+                if (logMessage) {
+                    logMessage(`Search completed for "${query}" using provider(s): ${
+                        searchResponse.usedProviders && searchResponse.usedProviders.length > 0
+                            ? searchResponse.usedProviders.join(', ')
+                            : searchResponse.provider
+                    }`);
+                } else {
+                    elizaLogger.info(`Search completed for "${query}" using provider(s): ${
+                        searchResponse.usedProviders && searchResponse.usedProviders.length > 0
+                            ? searchResponse.usedProviders.join(', ')
+                            : searchResponse.provider
+                    }`);
+                }
 
                 elizaLogger.debug(`Search response details: provider=${searchResponse.provider}, usedProviders=${JSON.stringify(searchResponse.usedProviders || [])}`);
 
@@ -1279,7 +1304,8 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                             .filter(key => key !== 'provider' && key !== 'combinedResults')
                             .join(', ');
 
-                        elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
+                        if (logMessage) logMessage(`Got results from providers (${providerNames}) for "${query}"`);
+                        else elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
 
                         resolve({
                             query,
@@ -1292,7 +1318,8 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                     }
                     // Handle single provider results
                     else if (searchResponse.results?.length) {
-                        elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
+                        if (logMessage) logMessage(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
+                        else elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
 
                         resolve({
                             query,
@@ -1303,21 +1330,27 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                         });
                     }
                     else {
-                        elizaLogger.warn(`No relevant results found for "${query}"`);
+                        if (logMessage) logMessage(`No relevant results found for "${query}"`);
+                        else elizaLogger.warn(`No relevant results found for "${query}"`);
+
                         resolve({
                             query,
                             text: "No relevant results found.",
                         });
                     }
                 } else {
-                    elizaLogger.error(`Search failed or returned no data for "${query}"`);
+                    if (logMessage) logMessage(`Search failed or returned no data for "${query}"`);
+                    else elizaLogger.error(`Search failed or returned no data for "${query}"`);
+
                     resolve({
                         query,
                         text: "Search failed to return results."
                     });
                 }
             } catch (error) {
-                elizaLogger.error(`Error during search for "${query}":`, error);
+                if (logMessage) logMessage(`Error during search for "${query}": ${error.message}`);
+                else elizaLogger.error(`Error during search for "${query}":`, error);
+
                 resolve({
                     query,
                     text: "Error during search"

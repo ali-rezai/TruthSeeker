@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, CheckCircle, XCircle, CircleHelp } from "lucide-react"
 import TruthOrb from "./truth-orb"
 import axios from "axios"
+import LogDisplay from './components/LogDisplay'
 
 const API_URL = "http://localhost:3000/truthseeker/"
 axios.defaults.baseURL = API_URL
@@ -41,13 +42,23 @@ const verifyTeam = async (claim: string, team: "blue" | "red", prevTeamInformati
   return response.data
 }
 
-const verifyAggregate = async (claim: string, blueTeamInformation?: string, blueTeamDecision?: string, redTeamInformation?: string, redTeamDecision?: string) => {
+const verifyAggregate = async (
+  claim: string,
+  blueTeamInformation?: string,
+  blueTeamDecision?: string,
+  redTeamInformation?: string,
+  redTeamDecision?: string,
+  blueLogs?: string[],
+  redLogs?: string[]
+) => {
   const response = await axios.post("verify-claim-2", {
     claim,
     blueTeamInformation,
     blueTeamDecision,
     redTeamInformation,
     redTeamDecision,
+    blueLogs,
+    redLogs
   })
   return response.data
 }
@@ -60,21 +71,52 @@ export default function ClaimVerifier() {
     confidence: number
     reason: string
   }>(null)
+  const [logs, setLogs] = useState<string[]>([])
 
   const handleVerify = async () => {
     if (!claim.trim()) return
 
     setIsVerifying(true)
+    setLogs([])
     setResult(null)
 
-    let aggregator: any
+    let blueTeam, redTeam, aggregator;
+
     try {
-      const blueTeam = await verifyTeam(claim, "blue")
-      const redTeam = await verifyTeam(claim, "red", blueTeam.queryResults, blueTeam.decision)
-      aggregator = await verifyAggregate(claim, blueTeam.queryResults, blueTeam.decision, redTeam.queryResults, redTeam.decision)
+      // Blue team verification
+      blueTeam = await verifyTeam(claim, "blue")
+      // Add blue team logs to our state
+      if (blueTeam.logs && blueTeam.logs.length > 0) {
+        setLogs(prev => [...prev, ...blueTeam.logs])
+      }
+
+      // Red team verification
+      redTeam = await verifyTeam(claim, "red", blueTeam.queryResults, blueTeam.decision)
+      // Add red team logs to our state
+      if (redTeam.logs && redTeam.logs.length > 0) {
+        setLogs(prev => [...prev, ...redTeam.logs])
+      }
+
+      // Pass all logs to the final aggregation step
+      aggregator = await verifyAggregate(
+        claim,
+        blueTeam.queryResults,
+        blueTeam.decision,
+        redTeam.queryResults,
+        redTeam.decision,
+        blueTeam.logs,
+        redTeam.logs
+      )
+
+      // Add final logs
+      if (aggregator.logs && aggregator.logs.length > 0) {
+        setLogs(prev => [...prev, ...aggregator.logs])
+      }
     } catch (e) {
+      console.error('Error verifying claim:', e)
+      setLogs(prev => [...prev, `[error] Error verifying claim: ${e.message}`])
       setIsVerifying(false)
-      throw e
+      return
     }
 
     setResult({
@@ -82,6 +124,7 @@ export default function ClaimVerifier() {
       confidence: aggregator.confidence,
       reason: aggregator.reason,
     })
+
     setIsVerifying(false)
   }
 
@@ -174,6 +217,12 @@ export default function ClaimVerifier() {
                 </div>
               </div>
             )}
+
+            {/* Log Display */}
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold mb-2">Verification Process Logs</h2>
+              <LogDisplay logs={logs} className="h-[300px]" />
+            </div>
           </div>
         </div>
       </div>
