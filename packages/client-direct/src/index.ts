@@ -1320,7 +1320,7 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                 elizaLogger.error(`Error during search for "${query}":`, error);
                 resolve({
                     query,
-                    text: "Error during search: " + error.message
+                    text: "Error during search"
                 });
             }
         }));
