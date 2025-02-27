@@ -78,19 +78,19 @@ class RateLimiter {
 // Tavily search provider implementation
 export class TavilyProvider implements ISearchProvider {
     name = SearchProvider.TAVILY;
-    private client: TavilyClient;
+    private _client: TavilyClient;
 
     constructor(apiKey: string) {
         if (!apiKey) {
             elizaLogger.warn("TAVILY_API_KEY is not set, Tavily search will not be available");
             return;
         }
-        this.client = tavily({ apiKey });
+        this._client = tavily({ apiKey });
         elizaLogger.info("Initialized Tavily search provider");
     }
 
     isAvailable(): boolean {
-        return !!this.client;
+        return !!this._client;
     }
 
     async search(query: string, options?: any): Promise<any> {
@@ -99,7 +99,7 @@ export class TavilyProvider implements ISearchProvider {
         }
 
         elizaLogger.debug(`Executing Tavily search for: "${query}"`);
-        const response = await this.client.search(query, {
+        const response = await this._client.search(query, {
             includeAnswer: options?.includeAnswer || true,
             maxResults: options?.limit || 3,
             topic: options?.type || "general",
@@ -116,14 +116,14 @@ export class TavilyProvider implements ISearchProvider {
     }
 
     get client(): TavilyClient {
-        return this.client;
+        return this._client;
     }
 }
 
 // Exa search provider implementation
 export class ExaProvider implements ISearchProvider {
     name = SearchProvider.EXA;
-    private client: ExaClient | null = null;
+    private _client: ExaClient | null = null;
     private rateLimiter = new RateLimiter(5); // 5 requests per second
 
     constructor(apiKey: string) {
@@ -131,12 +131,12 @@ export class ExaProvider implements ISearchProvider {
             elizaLogger.warn("EXA_API_KEY is not set, Exa search will not be available");
             return;
         }
-        this.client = new Exa(apiKey);
+        this._client = new Exa(apiKey);
         elizaLogger.info("Initialized Exa search provider");
     }
 
     isAvailable(): boolean {
-        return !!this.client;
+        return !!this._client;
     }
 
     async search(query: string, options?: any): Promise<any> {
@@ -149,7 +149,7 @@ export class ExaProvider implements ISearchProvider {
             // Use rate limiter for Exa API calls
             const response = await this.rateLimiter.schedule(async () => {
                 elizaLogger.debug(`Executing Exa search for: "${query}"`);
-                const result = await this.client.searchAndContents(
+                const result = await this._client.searchAndContents(
                     query,
                     {
                         type: options?.exaType || "auto",
@@ -171,6 +171,10 @@ export class ExaProvider implements ISearchProvider {
             elizaLogger.error(`Exa search error for "${query}":`, error);
             throw error;
         }
+    }
+
+    get client(): ExaClient {
+        return this._client;
     }
 }
 
