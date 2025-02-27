@@ -1119,8 +1119,8 @@ export class DirectClient {
             const blueLogs = req.body.blueLogs || [];
             const redLogs = req.body.redLogs || [];
 
-            // Create an array to store logs
-            const logs: string[] = [...blueLogs, ...redLogs];
+            // Create an array to store ONLY NEW logs (not the ones from previous steps)
+            const logs: string[] = [];
             const logMessage = (message: string) => {
                 elizaLogger.info(message);
                 logs.push(`[final] ${message}`);
@@ -1189,6 +1189,7 @@ export class DirectClient {
                 return;
             }
 
+            // Only return the new logs, not the ones from previous steps
             logMessage("Claim verification completed successfully");
             res.json({...aggregationResult, logs});
         });

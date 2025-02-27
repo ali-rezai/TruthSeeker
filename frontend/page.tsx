@@ -47,18 +47,14 @@ const verifyAggregate = async (
   blueTeamInformation?: string,
   blueTeamDecision?: string,
   redTeamInformation?: string,
-  redTeamDecision?: string,
-  blueLogs?: string[],
-  redLogs?: string[]
+  redTeamDecision?: string
 ) => {
   const response = await axios.post("verify-claim-2", {
     claim,
     blueTeamInformation,
     blueTeamDecision,
     redTeamInformation,
-    redTeamDecision,
-    blueLogs,
-    redLogs
+    redTeamDecision
   })
   return response.data
 }
@@ -97,15 +93,14 @@ export default function ClaimVerifier() {
         setLogs(prev => [...prev, ...redTeam.logs])
       }
 
-      // Pass all logs to the final aggregation step
+      // For the final step, don't pass the logs from previous steps
+      // This prevents duplication
       aggregator = await verifyAggregate(
         claim,
         blueTeam.queryResults,
         blueTeam.decision,
         redTeam.queryResults,
-        redTeam.decision,
-        blueTeam.logs,
-        redTeam.logs
+        redTeam.decision
       )
 
       // Add final logs
