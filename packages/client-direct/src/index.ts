@@ -1087,7 +1087,7 @@ export class DirectClient {
                 });
                 if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
                     elizaLogger.info(`${team} team decided to make additional queries`, decision);
-                    const additionalQueryResults = await doWebSearch(decision.additionalQueries as string[], team, webSearchService);
+                    const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService);
                     state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
                 } else {
                     break;
