@@ -31,7 +31,6 @@ import { z } from "zod";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
 import { aggregatorTemplate, decisionTemplate, queryTemplate } from "./templates.ts";
-import { v4 as uuidv4 } from 'uuid';
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -1004,7 +1003,7 @@ export class DirectClient {
             }
 
             // Create a verification ID
-            const verificationId = uuidv4();
+            const verificationId = stringToUuid(Date.now().toString());
 
             // Initialize the verification state
             this.verifications.set(verificationId, {
@@ -1067,7 +1066,7 @@ export class DirectClient {
             }
 
             // Create a verification ID
-            const verificationId = uuidv4();
+            const verificationId = stringToUuid(Date.now().toString());
 
             // Initialize the verification state
             this.verifications.set(verificationId, {
