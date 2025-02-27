@@ -41,10 +41,8 @@ ${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-Please respond in the following way with at least ${MIN_QUERIES} queries and at most ${MAX_QUERIES} queries:
-\`\`\`json
-["query1", "query2", "query3", ...]
-\`\`\`
+Your response must be a JSON object with the following fields:
+1. queries: ["query1", "query2", "query3", ...] (must have at least ${MIN_QUERIES} queries and at most ${MAX_QUERIES} queries)
 `
 }
 
@@ -87,13 +85,10 @@ ${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-Respond in the following way:
-\`\`\`json
-{
-    reason: "string (it must include your though process and the full reasoning behind the decision in detail)",
-    decision: "true" | "false" | "depends" | "unknown"
-}
-\`\`\`
+Your response must be a JSON object with the following fields:
+1. reason: string (it must include your though process and the full reasoning behind the decision in detail)
+2. decision: "true" | "false" | "depends" | "unknown"
+3. additional_queries: ["query1", "query2", "query3", ...] (This field is optional. Only include it if you need more information and want to query more data or you found out some information that you need to learn more about to make an informed decision)
 `;
 }
 
@@ -133,12 +128,8 @@ ${redTeamDecision.decision}
 ${redTeamDecision.reason}
 
 # Instructions
-Respond in the following way:
-\`\`\`json
-{
-    reason: "string (it must include your though process and the full reasoning behind the decision in detail)",
-    decision: "true" | "false" | "depends" | "unknown"
-}
-\`\`\`
+Your response must be a JSON object with the following fields:
+1. reason: string (it must include your though process and the full reasoning behind the decision in detail)
+2. decision: "true" | "false" | "depends" | "unknown"
 `;
 }

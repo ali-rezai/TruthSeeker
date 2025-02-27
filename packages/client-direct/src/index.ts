@@ -1046,11 +1046,11 @@ export class DirectClient {
                 state,
                 template: queryTemplate(team, prevTeam, prevTeamInformation, prevTeamDecision),
             });
-            const queries = await generateMessageResponse({
+            const queries = (await generateMessageResponse({
                 runtime: runtime,
                 context: queryContext,
                 modelClass: ModelClass.LARGE,
-            }) as any as string[];
+            }) as any).queries as string[];
 
             if (!queries) {
                 res.status(500).send("No queries generated");
@@ -1065,95 +1065,36 @@ export class DirectClient {
             elizaLogger.info(`Available search providers: ${availableProviders.join(', ') || 'none'}`);
 
             // Get Results using all available providers
-            let promises = [];
-            for (const query of queries) {
-                promises.push(new Promise(async (resolve, reject) => {
-                    try {
-                        elizaLogger.info(`Executing ${team} team query: "${query}"`);
-
-                        // Use all available providers
-                        const searchResponse = await webSearchService.search(
-                            query,
-                            { provider: "both" } // Use all available providers
-                        );
-
-                        elizaLogger.info(`Search completed for "${query}" using provider(s): ${
-                            searchResponse.usedProviders && searchResponse.usedProviders.length > 0
-                                ? searchResponse.usedProviders.join(', ')
-                                : searchResponse.provider
-                        }`);
-
-                        elizaLogger.debug(`Search response details: provider=${searchResponse.provider}, usedProviders=${JSON.stringify(searchResponse.usedProviders || [])}`);
-
-                        if (searchResponse) {
-                            // Handle combined results from multiple providers
-                            if (searchResponse.provider === "both" && searchResponse.combinedResults) {
-                                const providerNames = Object.keys(searchResponse)
-                                    .filter(key => key !== 'provider' && key !== 'combinedResults')
-                                    .join(', ');
-
-                                elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
-
-                                resolve({
-                                    query,
-                                    text: searchResponse.tavily?.answer ||
-                                          `Search results from ${providerNames}: ` +
-                                          searchResponse.combinedResults.map(r =>
-                                            `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
-                                          ).join("\n\n"),
-                                });
-                            }
-                            // Handle single provider results
-                            else if (searchResponse.results?.length) {
-                                elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
-
-                                resolve({
-                                    query,
-                                    text: searchResponse.answer ||
-                                          searchResponse.results.map(r =>
-                                            `${r.title}: ${r.content?.substring(0, 200) || r.text?.substring(0, 200)}...`
-                                          ).join("\n\n"),
-                                });
-                            }
-                            else {
-                                elizaLogger.warn(`No relevant results found for "${query}"`);
-                                resolve({
-                                    query,
-                                    text: "No relevant results found.",
-                                });
-                            }
-                        } else {
-                            elizaLogger.error(`Search failed or returned no data for "${query}"`);
-                            resolve({
-                                query,
-                                text: "Search failed to return results."
-                            });
-                        }
-                    } catch (error) {
-                        elizaLogger.error(`Error during search for "${query}":`, error);
-                        resolve({
-                            query,
-                            text: "Error during search: " + error.message
-                        });
-                    }
-                }));
-            }
-            const queryResults = await Promise.all(promises);
+            const queryResults = await doWebSearch(queries, team, webSearchService);
             elizaLogger.info(`Completed ${team} team query searches`);
 
             // Reason
             state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
 
             elizaLogger.info(`Starting ${team} team decision making process`);
-            const decisionContext = composeContext({
-                state,
-                template: decisionTemplate(team, prevTeam, prevTeamInformation, prevTeamDecision),
-            });
-            const decision = await generateMessageResponse({
-                runtime: runtime,
-                context: decisionContext,
-                modelClass: ModelClass.LARGE,
-            });
+            let decisionTries = 0;
+
+            let decision = null;
+            while (decisionTries < 5) {
+                const decisionContext = composeContext({
+                    state,
+                    template: decisionTemplate(team, prevTeam, prevTeamInformation, prevTeamDecision),
+                });
+                decision = await generateMessageResponse({
+                    runtime: runtime,
+                    context: decisionContext,
+                    modelClass: ModelClass.LARGE,
+                });
+                if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
+                    elizaLogger.info(`${team} team decided to make additional queries`, decision);
+                    const additionalQueryResults = await doWebSearch(decision.additionalQueries as string[], team, webSearchService);
+                    state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
+                } else {
+                    break;
+                }
+                decisionTries++;
+            }
+
             elizaLogger.info(`${team} team decision completed`);
             res.json({decision, queryResults: state["queryResults"]});
         });
@@ -1168,11 +1109,6 @@ export class DirectClient {
             const redTeamDecision = JSON.parse(req.body.redTeamDecision);
             const blueTeamInformation = req.body.blueTeamInformation;
             const redTeamInformation = req.body.redTeamInformation;
-
-            console.log(redTeamDecision)
-            console.log(redTeamInformation)
-            console.log(blueTeamDecision)
-            console.log(blueTeamInformation)
 
             let runtime = this.agents.get(agentId);
 
@@ -1314,3 +1250,80 @@ const directPlugin: Plugin = {
     clients: [DirectClientInterface],
 };
 export default directPlugin;
+
+async function doWebSearch(queries: string[], team: "blue" | "red", webSearchService: any): Promise<{query: string, text: string}[]> {
+    let promises = [];
+    for (const query of queries) {
+        promises.push(new Promise(async (resolve, reject) => {
+            try {
+                elizaLogger.info(`Executing ${team} team query: "${query}"`);
+
+                // Use all available providers
+                const searchResponse = await webSearchService.search(
+                    query,
+                    { provider: "both" } // Use all available providers
+                );
+
+                elizaLogger.info(`Search completed for "${query}" using provider(s): ${
+                    searchResponse.usedProviders && searchResponse.usedProviders.length > 0
+                        ? searchResponse.usedProviders.join(', ')
+                        : searchResponse.provider
+                }`);
+
+                elizaLogger.debug(`Search response details: provider=${searchResponse.provider}, usedProviders=${JSON.stringify(searchResponse.usedProviders || [])}`);
+
+                if (searchResponse) {
+                    // Handle combined results from multiple providers
+                    if (searchResponse.provider === "both" && searchResponse.combinedResults) {
+                        const providerNames = Object.keys(searchResponse)
+                            .filter(key => key !== 'provider' && key !== 'combinedResults')
+                            .join(', ');
+
+                        elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
+
+                        resolve({
+                            query,
+                            text: searchResponse.tavily?.answer ||
+                                  `Search results from ${providerNames}: ` +
+                                  searchResponse.combinedResults.map(r =>
+                                    `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
+                                  ).join("\n\n"),
+                        });
+                    }
+                    // Handle single provider results
+                    else if (searchResponse.results?.length) {
+                        elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
+
+                        resolve({
+                            query,
+                            text: searchResponse.answer ||
+                                  searchResponse.results.map(r =>
+                                    `${r.title}: ${r.content?.substring(0, 200) || r.text?.substring(0, 200)}...`
+                                  ).join("\n\n"),
+                        });
+                    }
+                    else {
+                        elizaLogger.warn(`No relevant results found for "${query}"`);
+                        resolve({
+                            query,
+                            text: "No relevant results found.",
+                        });
+                    }
+                } else {
+                    elizaLogger.error(`Search failed or returned no data for "${query}"`);
+                    resolve({
+                        query,
+                        text: "Search failed to return results."
+                    });
+                }
+            } catch (error) {
+                elizaLogger.error(`Error during search for "${query}":`, error);
+                resolve({
+                    query,
+                    text: "Error during search: " + error.message
+                });
+            }
+        }));
+    }
+    return await Promise.all(promises);
+}
