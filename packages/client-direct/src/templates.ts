@@ -88,7 +88,7 @@ ${prevTeamDecision.reason}
 Your response must be a JSON object with the following fields:
 1. reason: string (it must include your though process and the full reasoning behind the decision in detail)
 2. decision: "true" | "false" | "depends" | "unknown"
-3. additional_queries: ["query1", "query2", "query3", ...] (This field is optional. Only include it if you need more information and want to query more data or you found out some information that you need to learn more about to make an informed decision)
+3. additional_queries: ["query1", "query2", "query3", ...] (This field is optional. If you'd like to look deeper into something that you found out or need more information and want to query more data to make a better more informed decision you can include additional queries here.)
 `;
 }
 

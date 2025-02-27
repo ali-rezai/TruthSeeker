@@ -3,12 +3,33 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2, CheckCircle, XCircle } from "lucide-react"
+import { Loader2, CheckCircle, XCircle, CircleHelp } from "lucide-react"
 import TruthOrb from "./truth-orb"
 import axios from "axios"
 
 const API_URL = "http://localhost:3000/truthseeker/"
 axios.defaults.baseURL = API_URL
+
+const color = {
+  true: "bg-green-400",
+  false: "bg-red-400",
+  depends: "bg-yellow-400",
+  unknown: "bg-gray-400",
+}
+
+const bgColor = {
+  true: "bg-green-500",
+  false: "bg-red-500",
+  depends: "bg-yellow-500",
+  unknown: "bg-gray-500",
+}
+
+const circle = {
+  true: <CheckCircle className="h-12 w-12 text-green-500" />,
+  false: <XCircle className="h-12 w-12 text-red-500" />,
+  depends: <CheckCircle className="h-12 w-12 text-yellow-500" />,
+  unknown: <CircleHelp className="h-12 w-12 text-gray-500" />,
+}
 
 const verifyTeam = async (claim: string, team: "blue" | "red", prevTeamInformation?: string, prevTeamDecision?: string) => {
   const response = await axios.post("verify-claim-1", {
@@ -35,9 +56,9 @@ export default function ClaimVerifier() {
   const [claim, setClaim] = useState("")
   const [isVerifying, setIsVerifying] = useState(false)
   const [result, setResult] = useState<null | {
-    verified: boolean
+    decision: "true" | "false" | "depends" | "unknown"
     confidence: number
-    explanation: string
+    reason: string
   }>(null)
 
   const handleVerify = async () => {
@@ -56,9 +77,9 @@ export default function ClaimVerifier() {
     }
 
     setResult({
-      verified: aggregator.decision,
+      decision: aggregator.decision,
       confidence: aggregator.confidence,
-      explanation: aggregator.reason,
+      reason: aggregator.reason,
     })
     setIsVerifying(false)
   }
@@ -88,6 +109,11 @@ export default function ClaimVerifier() {
                       id="claim"
                       value={claim}
                       onChange={(e) => setClaim(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleVerify()
+                        }
+                      }}
                       placeholder="e.g., 'The Earth is flat'"
                       className="bg-gray-800 border-gray-700 text-white placeholder:text-gray-500 focus:ring-cyan-500 focus:border-cyan-500"
                     />
@@ -101,7 +127,7 @@ export default function ClaimVerifier() {
                     {isVerifying ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Consulting the Orb
+                        Verifying the claim...
                       </>
                     ) : (
                       "Verify Claim"
@@ -115,18 +141,18 @@ export default function ClaimVerifier() {
               <div className="relative">
                 <div
                   className={`absolute -inset-0.5 rounded-lg blur opacity-40 ${
-                    result.verified ? "bg-green-400" : "bg-red-400"
+                    color[result.decision]
                   }`}
                 ></div>
                 <div className="relative bg-gray-900 rounded-lg p-6 shadow-xl">
                   <div className="text-center mb-4">
-                    <h3 className="text-2xl font-bold">{result.verified ? "TRUTH CONFIRMED" : "FALSEHOOD DETECTED"}</h3>
+                    <h3 className="text-2xl font-bold">{result.decision.toUpperCase()}</h3>
                     <div className="mt-2 flex justify-center">
                       <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-800">
                         <div className="mr-2">Confidence:</div>
                         <div className="h-2 w-24 bg-gray-700 rounded-full overflow-hidden">
                           <div
-                            className={`h-full ${result.verified ? "bg-green-500" : "bg-red-500"}`}
+                            className={`h-full ${bgColor[result.decision]}`}
                             style={{ width: `${result.confidence}%` }}
                           ></div>
                         </div>
@@ -137,16 +163,12 @@ export default function ClaimVerifier() {
 
                   <div className="flex items-center justify-center mb-4">
                     <div className="w-16 h-16 rounded-full flex items-center justify-center">
-                      {result.verified ? (
-                        <CheckCircle className="h-12 w-12 text-green-500" />
-                      ) : (
-                        <XCircle className="h-12 w-12 text-red-500" />
-                      )}
+                      {circle[result.decision]}
                     </div>
                   </div>
 
                   <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <p className="text-gray-300 text-center">{result.explanation}</p>
+                    <p className="text-gray-300 text-center">{result.reason}</p>
                   </div>
                 </div>
               </div>
@@ -163,4 +185,3 @@ export default function ClaimVerifier() {
     </div>
   )
 }
-
