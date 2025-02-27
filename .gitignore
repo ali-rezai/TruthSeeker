@@ -1,5 +1,7 @@
 node_modules
-/out
+/frontend/.next
+/frontend/out
+/frontend/build
 
 .env
 .env.production
@@ -98,3 +100,13 @@ ton_nft_metadata/*
 
 ton_nft_images/
 ton_nft_images/*
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+.vercel
+
+*.tsbuildinfo
+next-env.d.ts

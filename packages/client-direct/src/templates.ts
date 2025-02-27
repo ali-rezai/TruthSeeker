@@ -104,8 +104,8 @@ export function aggregatorTemplate(blueTeamDecision: any, blueTeamInformation: s
 
 # Task
 2 different teams tried to verify the claim.
-The Blue team just went to query data relating to it and then made a decision based on those.
-The Red team went to query data assuming the claim was false and then made a decision based on those.
+The Blue team went to query data assuming the claim was true and then made a decision based on the information they gathered.
+The Red team went to query data assuming the claim was false and then made a decision based on the information they gathered.
 Your job is to take the results from both teams and make a final decision.
 
 Care about the smallest of details both in the claims and in the information you have gathered.
@@ -129,7 +129,8 @@ ${redTeamDecision.reason}
 
 # Instructions
 Your response must be a JSON object with the following fields:
-1. reason: string (it must include your though process and the full reasoning behind the decision in detail)
+1. reason: string (it must include your though process and the full reasoning behind the decision in detail. Do not mention the blue and red team you can claim their work as your own.)
 2. decision: "true" | "false" | "depends" | "unknown"
+3. confidence: number (0-100) (the confidence in your decision as a percentage)
 `;
 }

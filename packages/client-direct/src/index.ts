@@ -992,7 +992,7 @@ export class DirectClient {
             const userId = stringToUuid(req.body.userId ?? "user");
             const team = req.body.team ?? "blue";
             const prevTeamInformation = req.body.prevTeamInformation;
-            const prevTeamDecision = req.body.prevTeamDecision ? JSON.parse(req.body.prevTeamDecision) : null;
+            const prevTeamDecision = req.body.prevTeamDecision;
 
             const prevTeam: "blue" | "red" | null = prevTeamDecision ? (team == "blue" ? "red" : "blue") : null;
 
@@ -1020,14 +1020,14 @@ export class DirectClient {
                 "direct"
             );
 
-            const text = req.body.text;
+            const claim = req.body.claim;
             // if empty text, directly return
-            if (!text) {
+            if (!claim) {
                 res.json([]);
                 return;
             }
 
-            elizaLogger.info(`Starting claim verification for: "${text}"`);
+            elizaLogger.info(`Starting claim verification for: "${claim}"`);
 
             let state = await runtime.composeState({
                 content: {
@@ -1038,7 +1038,7 @@ export class DirectClient {
                 agentId: runtime.agentId
             }, {
                 agentName: runtime.character.name,
-                claim: text,
+                claim,
             });
 
             // Generate queries
@@ -1105,8 +1105,8 @@ export class DirectClient {
                 req.body.roomId ?? "default-room-" + agentId
             );
             const userId = stringToUuid(req.body.userId ?? "user");
-            const blueTeamDecision = JSON.parse(req.body.blueTeamDecision);
-            const redTeamDecision = JSON.parse(req.body.redTeamDecision);
+            const blueTeamDecision = req.body.blueTeamDecision;
+            const redTeamDecision = req.body.redTeamDecision;
             const blueTeamInformation = req.body.blueTeamInformation;
             const redTeamInformation = req.body.redTeamInformation;
 
@@ -1134,9 +1134,9 @@ export class DirectClient {
                 "direct"
             );
 
-            const text = req.body.text;
+            const claim = req.body.claim;
             // if empty text, directly return
-            if (!text) {
+            if (!claim) {
                 res.json([]);
                 return;
             }
@@ -1150,7 +1150,7 @@ export class DirectClient {
                 agentId: runtime.agentId
             }, {
                 agentName: runtime.character.name,
-                claim: text,
+                claim,
             });
 
             // Aggregation
