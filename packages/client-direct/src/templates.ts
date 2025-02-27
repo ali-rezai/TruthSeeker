@@ -71,6 +71,8 @@ Care about the smallest of details both in the claims and in the information you
 If your decision would change depending on something that is not provided in the claim but is key to your decision, use "depends" as your decision.
 Do not rely on "implied" data in the claim. If something is missing from the claim, it is missing do not make assumptions.
 
+If there is not enough information to make a decision or there is data both for and against the claim which wouldn't change your decision no matter what context is added to the claim, use "inconclusive" as your decision.
+
 # Your Query Results
 {{queryResults}}
 ` +
@@ -88,7 +90,7 @@ ${prevTeamDecision.reason}
 # Instructions
 Your response must be a JSON object with the following fields:
 1. reason: string (it must include your though process and the full reasoning behind the decision in detail)
-2. decision: "true" | "false" | "depends" | "unknown"
+2. decision: "true" | "false" | "depends" | "inconclusive"
 3. additional_queries: ["query1", "query2", "query3", ...] (This field is optional. If you'd like to look deeper into something that you found out or need more information and want to query more data to make a better more informed decision you can include additional queries here.)
 `;
 }
@@ -113,6 +115,8 @@ Care about the smallest of details both in the claims and in the information you
 If your decision would change depending on something that is not provided in the claim but is key to your decision, use "depends" as your decision.
 Do not rely on "implied" data in the claim. If something is missing from the claim, it is missing do not make assumptions.
 
+If there is not enough information to make a decision or there is data both for and against the claim which wouldn't change your decision no matter what context is added to the claim, use "inconclusive" as your decision.
+
 # Blue Team
 ## Queries and Information Gathered
 ${blueTeamInformation}
@@ -132,7 +136,7 @@ ${redTeamDecision.reason}
 # Instructions
 Your response must be a JSON object with the following fields:
 1. reason: string (it must include your though process and the full reasoning behind the decision in detail. Do not mention the blue and red team you can claim their work as your own.)
-2. decision: "true" | "false" | "depends" | "unknown"
+2. decision: "true" | "false" | "depends" | "inconclusive"
 3. confidence: number (0-100) (the confidence in your decision as a percentage)
 `;
 }

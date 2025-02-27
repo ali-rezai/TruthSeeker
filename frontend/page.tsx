@@ -14,21 +14,21 @@ const color = {
   true: "bg-green-400",
   false: "bg-red-400",
   depends: "bg-yellow-400",
-  unknown: "bg-gray-400",
+  inconclusive: "bg-gray-400",
 }
 
 const bgColor = {
   true: "bg-green-500",
   false: "bg-red-500",
   depends: "bg-yellow-500",
-  unknown: "bg-gray-500",
+  inconclusive: "bg-gray-500",
 }
 
 const circle = {
   true: <CheckCircle className="h-12 w-12 text-green-500" />,
   false: <XCircle className="h-12 w-12 text-red-500" />,
   depends: <CheckCircle className="h-12 w-12 text-yellow-500" />,
-  unknown: <CircleHelp className="h-12 w-12 text-gray-500" />,
+  inconclusive: <CircleHelp className="h-12 w-12 text-gray-500" />,
 }
 
 const verifyTeam = async (claim: string, team: "blue" | "red", prevTeamInformation?: string, prevTeamDecision?: string) => {
@@ -56,7 +56,7 @@ export default function ClaimVerifier() {
   const [claim, setClaim] = useState("")
   const [isVerifying, setIsVerifying] = useState(false)
   const [result, setResult] = useState<null | {
-    decision: "true" | "false" | "depends" | "unknown"
+    decision: "true" | "false" | "depends" | "inconclusive"
     confidence: number
     reason: string
   }>(null)
