@@ -197,6 +197,23 @@ ${redTeamInformation}
 Decision: ${redTeamDecision.decision}
 Reasoning: ${redTeamDecision.reason}
 
+# Confidence Score Guidelines
+The confidence score must be based SOLELY on the quality, quantity, and reliability of available evidence, NOT on whether the claim is true or false. A claim can be definitively false with high confidence if there is strong evidence against it.
+
+Evaluate confidence based on these factors:
+1. QUANTITY: How much relevant evidence exists across both teams?
+2. QUALITY: How reliable, authoritative, and current are the sources?
+3. CONSISTENCY: How consistent are the findings across different sources?
+4. METHODOLOGY: How sound was the research methodology used to gather evidence?
+5. GAPS: Are there significant information gaps that prevent a complete assessment?
+
+Confidence Score Ranges:
+- High (80-100): Abundant high-quality evidence from multiple authoritative sources with consistent findings
+- Medium (50-79): Sufficient evidence from reliable sources, but with some limitations, inconsistencies, or gaps
+- Low (0-49): Limited evidence, poor quality sources, significant contradictions, or major information gaps
+
+IMPORTANT: A claim that is clearly false based on strong evidence should receive a HIGH confidence score, not a low one. The confidence score reflects certainty in the assessment, not support for the claim.
+
 # Instructions
 Your response must be a JSON object with the following structure:
 
@@ -204,6 +221,7 @@ Your response must be a JSON object with the following structure:
   "decision": "true|false|depends|inconclusive|too_early",
   "reason": "Your detailed reasoning process...",
   "confidence": 0-100,
+  "confidence_explanation": "Specific explanation of why you assigned this confidence score, focusing on evidence quality and quantity...",
   "strongest_evidence_for": [
     "Specific evidence point 1 supporting the claim",
     "Specific evidence point 2 supporting the claim"
@@ -219,10 +237,9 @@ Your response must be a JSON object with the following structure:
 }
 
 Notes:
-- Your confidence score should reflect the quality and consistency of available evidence
-- High confidence (80-100) should only be used when evidence is overwhelming and from multiple reliable sources
-- Medium confidence (50-79) for good evidence with some limitations or contradictions
-- Low confidence (0-49) for limited, poor quality, or highly contradictory evidence
+- First determine your decision based on the evidence
+- Then separately assess confidence based ONLY on evidence quality/quantity, not the decision itself
+- Include a "confidence_explanation" that explicitly justifies your confidence score
 - Be specific about which evidence points were most influential in your decision
 - If the claim references a future date or event that hasn't occurred yet, use the "too_early" decision
 `;
