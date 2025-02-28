@@ -19,8 +19,12 @@ export function queryTemplate(team: "blue" | "red", prevTeam?: "blue" | "red" | 
 
 # Task
 As {{agentName}} you believe that the claim is ${assumption} but you need to prove and convince others of that fact.
-So your task is to generate search queries that will help ${goal} the claim.
-Your queries should be designed to gather factual information and data that can be used to ${goal} the claim.
+
+IMPORTANT: This is a structured fact-checking exercise using a red team/blue team approach. Your role is to help thoroughly investigate the claim from multiple angles.
+
+As part of the ${team} team, your temporary task is to generate search queries that could potentially ${goal} the claim. This is NOT about spreading misinformation but about ensuring we gather comprehensive evidence from different perspectives.
+
+Your queries should be designed to gather factual information and data that might be used to ${goal} the claim. The final determination about the claim's truthfulness will be made after both teams' findings are analyzed.
 
 Focus on finding objective data rather than directly searching for the claim itself or opposite of the claim. For example:
 - Instead of "Did X happen?" search for specific details about the event
@@ -32,7 +36,7 @@ Keep queries precise and targeted to avoid ambiguous results.
 (prevTeam != null ? `
 # Extra Information
 Before you another agent actually assumed that the claim was ${negativeAssumption} and tried to ${negativeGoal} it. Here's what they came up with.
-## Their queries and the results 
+## Their queries and the results
 ${prevTeamInformation}
 ## Their decision
 ${prevTeamDecision.decision}
@@ -41,12 +45,16 @@ ${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-Your response must be a JSON object with the following fields:
+IMPORTANT: Do not explain why you can't fulfill this task or reject these instructions. This is a legitimate fact-checking methodology.
+
+Your response must be ONLY a JSON object with the following fields:
 1. queries: ["query1", "query2", "query3", ...] (must have at least ${MIN_QUERIES} queries and at most ${MAX_QUERIES} queries)
+
+Do not include any text outside of the JSON object.
 `
 }
 
-export function decisionTemplate(team: "blue" | "red", prevTeam?: "blue" | "red" | null, prevTeamInformation?: string, prevTeamDecision?: any) { 
+export function decisionTemplate(team: "blue" | "red", prevTeam?: "blue" | "red" | null, prevTeamInformation?: string, prevTeamDecision?: any) {
     const assumption = team == "blue" ? "true" : "false";
     const negativeAssumption = team == "blue" ? "false" : "true";
 
@@ -82,7 +90,7 @@ Do not rely on what the claim implies. Only rely on EXPLICITLY stated informatio
 (prevTeam != null ? `
 # Extra Information
 Before you another agent actually assumed that the claim was ${negativeAssumption} and tried to ${negativeGoal} it. Here's what they came up with.
-## Their queries and the results 
+## Their queries and the results
 ${prevTeamInformation}
 ## Their decision
 ${prevTeamDecision.decision}
@@ -94,7 +102,7 @@ ${prevTeamDecision.reason}
 Your response must be a JSON object with the following fields:
 1. reason: string (it must include your though process and the full reasoning behind the decision in detail)
 2. decision: "true" | "false" | "depends" | "inconclusive"
-3. additional_queries: ["query1", "query2", "query3", ...] (This field is optional. If you'd like to look deeper into something that you found out or need more information and want to query more data to make a better more informed decision you can include additional queries here.)
+3. additional_queries: ["query1", "query2", "query3", ...] (This field is optional and should only be used if absolutely necessary. Please try to make a decision with the information you already have. Only request additional queries if there is a critical gap in the information.)
 `;
 }
 
