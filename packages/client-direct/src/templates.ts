@@ -135,7 +135,7 @@ ${redTeamDecision.reason}
 
 # Instructions
 Your response must be a JSON object with the following fields:
-1. reason: string (it must include your though process and the full reasoning behind the decision in detail. Do not mention the blue and red team you can claim their work as your own.)
+1. reason: string (it must include your though process and the full reasoning behind the decision in detail. Be critical, precise and detailed.)
 2. decision: "true" | "false" | "depends" | "inconclusive"
 3. confidence: number (0-100) (the confidence in your decision as a percentage)
 `;

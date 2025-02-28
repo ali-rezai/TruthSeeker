@@ -32,93 +32,6 @@ const circle = {
   inconclusive: <CircleHelp className="h-12 w-12 text-gray-500" />,
 }
 
-const verifyTeam = async (claim: string, team: "blue" | "red", prevTeamInformation?: string, prevTeamDecision?: string) => {
-  const response = await axios.post("verify-claim-1", {
-    claim,
-    team,
-    prevTeamInformation,
-    prevTeamDecision,
-  })
-  return response.data
-}
-
-const verifyAggregateWithProgress = async (
-  claim: string,
-  blueTeamInformation?: string,
-  blueTeamDecision?: string,
-  redTeamInformation?: string,
-  redTeamDecision?: string,
-  setLogsFunction?: React.Dispatch<React.SetStateAction<string[]>>
-) => {
-  // Create a controller to abort the fetch if needed
-  const controller = new AbortController();
-  const { signal } = controller;
-
-  try {
-    // Make the initial request to start the verification
-    const response = await axios.post("verify-claim-2-start", {
-      claim,
-      blueTeamInformation,
-      blueTeamDecision,
-      redTeamInformation,
-      redTeamDecision,
-    });
-
-    const verificationId = response.data.verificationId;
-
-    // Poll for updates
-    let completed = false;
-    let result = null;
-
-    while (!completed) {
-      // Wait a short time between polls
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Get the latest status
-      const statusResponse = await axios.get(`verify-claim-2-status/${verificationId}`, { signal });
-      const status = statusResponse.data;
-
-      // Add any new logs
-      if (status.logs && status.logs.length > 0 && setLogsFunction) {
-        setLogsFunction(prev => [...prev, ...status.logs]);
-      }
-
-      // Check if completed
-      if (status.completed) {
-        completed = true;
-        result = status.result;
-      }
-    }
-
-    return result;
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      console.log('Fetch aborted');
-    } else {
-      throw error;
-    }
-  } finally {
-    controller.abort(); // Clean up
-  }
-};
-
-const verifyAggregate = async (
-  claim: string,
-  blueTeamInformation?: string,
-  blueTeamDecision?: string,
-  redTeamInformation?: string,
-  redTeamDecision?: string
-) => {
-  const response = await axios.post("verify-claim-2", {
-    claim,
-    blueTeamInformation,
-    blueTeamDecision,
-    redTeamInformation,
-    redTeamDecision
-  })
-  return response.data
-}
-
 export default function ClaimVerifier() {
   const [claim, setClaim] = useState("")
   const [isVerifying, setIsVerifying] = useState(false)
@@ -137,34 +50,15 @@ export default function ClaimVerifier() {
     setResult(null)
 
     try {
-      // Start blue team verification
-      const blueTeamPromise = verifyTeamWithProgress(claim, "blue", undefined, undefined, setLogs);
-
-      // Wait for blue team to finish
-      const blueTeam = await blueTeamPromise;
-
-      // Start red team verification
-      const redTeamPromise = verifyTeamWithProgress(claim, "red", blueTeam.queryResults, blueTeam.decision, setLogs);
-
-      // Wait for red team to finish
-      const redTeam = await redTeamPromise;
-
-      // Final aggregation with progress
-      const aggregator = await verifyAggregateWithProgress(
-        claim,
-        blueTeam.queryResults,
-        blueTeam.decision,
-        redTeam.queryResults,
-        redTeam.decision,
-        setLogs
-      );
+      // Start verification
+      const aggregator = await verifyClaimWithProgress(claim, setLogs);
 
       setResult({
         decision: aggregator.decision,
         confidence: aggregator.confidence,
         reason: aggregator.reason,
       });
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error verifying claim:', e);
       setLogs(prev => [...prev, `[error] Error verifying claim: ${e.message}`]);
     } finally {
@@ -173,11 +67,8 @@ export default function ClaimVerifier() {
   };
 
   // Function to handle incremental updates
-  const verifyTeamWithProgress = async (
+  const verifyClaimWithProgress = async (
     claim: string,
-    team: "blue" | "red",
-    prevTeamInformation?: string,
-    prevTeamDecision?: string,
     setLogsFunction?: React.Dispatch<React.SetStateAction<string[]>>
   ) => {
     // Create a controller to abort the fetch if needed
@@ -186,13 +77,7 @@ export default function ClaimVerifier() {
 
     try {
       // Make the initial request to start the verification
-      const response = await axios.post("verify-claim-1-start", {
-        claim,
-        team,
-        prevTeamInformation,
-        prevTeamDecision,
-      });
-
+      const response = await axios.post("verify-claim-frontend", { claim });
       const verificationId = response.data.verificationId;
 
       // Poll for updates
@@ -204,7 +89,7 @@ export default function ClaimVerifier() {
         await new Promise(resolve => setTimeout(resolve, 500));
 
         // Get the latest status
-        const statusResponse = await axios.get(`verify-claim-1-status/${verificationId}`, { signal });
+        const statusResponse = await axios.get(`verify-claim-frontend-status/${verificationId}`, { signal });
         const status = statusResponse.data;
 
         // Add any new logs
@@ -220,7 +105,7 @@ export default function ClaimVerifier() {
       }
 
       return result;
-    } catch (error) {
+    } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('Fetch aborted');
       } else {
@@ -315,7 +200,7 @@ export default function ClaimVerifier() {
                   </div>
 
                   <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
-                    <p className="text-gray-300 text-center">{result.reason}</p>
+                    <p className="text-gray-300 text-left">{result.reason}</p>
                   </div>
                 </div>
               </div>
@@ -324,7 +209,7 @@ export default function ClaimVerifier() {
             {/* Log Display */}
             <div className="mb-6">
               <h2 className="text-lg font-semibold mb-2">Verification Process Logs</h2>
-              <LogDisplay logs={logs} className="h-[300px]" />
+              <LogDisplay logs={logs} />
             </div>
           </div>
         </div>

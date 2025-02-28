@@ -1,116 +1,22 @@
 import {
     composeContext,
     elizaLogger,
-    generateCaption,
-    generateImage,
     generateMessageResponse,
-    generateObject,
-    getEmbeddingZeroVector,
-    messageCompletionFooter,
     ModelClass,
-    Service,
     ServiceType,
     settings,
+    State,
     stringToUuid,
-    type AgentRuntime,
     type Client,
-    type Content,
     type IAgentRuntime,
-    type Media,
-    type Memory,
     type Plugin,
 } from "@elizaos/core";
 import bodyParser from "body-parser";
 import cors from "cors";
-import express, { type Request as ExpressRequest } from "express";
-import * as fs from "fs";
-import multer from "multer";
-import OpenAI from "openai";
-import * as path from "path";
-import { z } from "zod";
+import express from "express";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
 import { aggregatorTemplate, decisionTemplate, queryTemplate } from "./templates.ts";
-
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadDir = path.join(process.cwd(), "data", "uploads");
-        // Create the directory if it doesn't exist
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-        cb(null, `${uniqueSuffix}-${file.originalname}`);
-    },
-});
-
-// some people have more memory than disk.io
-const upload = multer({ storage /*: multer.memoryStorage() */ });
-
-export const messageHandlerTemplate =
-    // {{goals}}
-    // "# Action Examples" is already included
-    `{{actionExamples}}
-(Action examples are for reference only. Do not use the information from them in your response.)
-
-# Knowledge
-{{knowledge}}
-
-# Task: Generate dialog and actions for the character {{agentName}}.
-About {{agentName}}:
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-{{attachments}}
-
-# Capabilities
-Note that {{agentName}} is capable of reading/seeing/hearing various forms of media, including images, videos, audio, plaintext and PDFs. Recent attachments have been included above under the "Attachments" section.
-
-{{messageDirections}}
-
-{{recentMessages}}
-
-{{actions}}
-
-# Instructions: Write the next message for {{agentName}}.
-` + messageCompletionFooter;
-
-export const hyperfiHandlerTemplate = `{{actionExamples}}
-(Action examples are for reference only. Do not use the information from them in your response.)
-
-# Knowledge
-{{knowledge}}
-
-# Task: Generate dialog and actions for the character {{agentName}}.
-About {{agentName}}:
-{{bio}}
-{{lore}}
-
-{{providers}}
-
-{{attachments}}
-
-# Capabilities
-Note that {{agentName}} is capable of reading/seeing/hearing various forms of media, including images, videos, audio, plaintext and PDFs. Recent attachments have been included above under the "Attachments" section.
-
-{{messageDirections}}
-
-{{recentMessages}}
-
-{{actions}}
-
-# Instructions: Write the next message for {{agentName}}.
-
-Response format should be formatted in a JSON block like this:
-\`\`\`json
-{ "lookAt": "{{nearby}}" or null, "emote": "{{emotes}}" or null, "say": "string" or null, "actions": (array of strings) or null }
-\`\`\`
-`;
 
 export class DirectClient {
     public app: express.Application;
@@ -129,17 +35,6 @@ export class DirectClient {
         this.verifications = new Map(); // Initialize the verifications map
 
         this.app.use(bodyParser.json());
-        this.app.use(bodyParser.urlencoded({ extended: true }));
-
-        // Serve both uploads and generated images
-        this.app.use(
-            "/media/uploads",
-            express.static(path.join(process.cwd(), "/data/uploads"))
-        );
-        this.app.use(
-            "/media/generated",
-            express.static(path.join(process.cwd(), "/generatedImages"))
-        );
 
         const apiRouter = createApiRouter(this.agents, this);
         this.app.use(apiRouter);
@@ -147,617 +42,16 @@ export class DirectClient {
         const apiLogRouter = createVerifiableLogApiRouter(this.agents);
         this.app.use(apiLogRouter);
 
-        // Define an interface that extends the Express Request interface
-        interface CustomRequest extends ExpressRequest {
-            file?: Express.Multer.File;
-        }
-
-        // Update the route handler to use CustomRequest instead of express.Request
-        this.app.post(
-            "/:agentId/whisper",
-            upload.single("file"),
-            async (req: CustomRequest, res: express.Response) => {
-                const audioFile = req.file; // Access the uploaded file using req.file
-                const agentId = req.params.agentId;
-
-                if (!audioFile) {
-                    res.status(400).send("No audio file provided");
-                    return;
-                }
-
-                let runtime = this.agents.get(agentId);
-                const apiKey = runtime.getSetting("OPENAI_API_KEY");
-
-                // if runtime is null, look for runtime with the same name
-                if (!runtime) {
-                    runtime = Array.from(this.agents.values()).find(
-                        (a) =>
-                            a.character.name.toLowerCase() ===
-                            agentId.toLowerCase()
-                    );
-                }
-
-                if (!runtime) {
-                    res.status(404).send("Agent not found");
-                    return;
-                }
-
-                const openai = new OpenAI({
-                    apiKey,
-                });
-
-                const transcription = await openai.audio.transcriptions.create({
-                    file: fs.createReadStream(audioFile.path),
-                    model: "whisper-1",
-                });
-
-                res.json(transcription);
-            }
-        );
-
-        this.app.post(
-            "/:agentId/message",
-            upload.single("file"),
-            async (req: express.Request, res: express.Response) => {
-                const agentId = req.params.agentId;
-                const roomId = stringToUuid(
-                    req.body.roomId ?? "default-room-" + agentId
-                );
-                const userId = stringToUuid(req.body.userId ?? "user");
-
-                let runtime = this.agents.get(agentId);
-
-                // if runtime is null, look for runtime with the same name
-                if (!runtime) {
-                    runtime = Array.from(this.agents.values()).find(
-                        (a) =>
-                            a.character.name.toLowerCase() ===
-                            agentId.toLowerCase()
-                    );
-                }
-
-                if (!runtime) {
-                    res.status(404).send("Agent not found");
-                    return;
-                }
-
-                await runtime.ensureConnection(
-                    userId,
-                    roomId,
-                    req.body.userName,
-                    req.body.name,
-                    "direct"
-                );
-
-                const text = req.body.text;
-                // if empty text, directly return
-                if (!text) {
-                    res.json([]);
-                    return;
-                }
-
-                const messageId = stringToUuid(Date.now().toString());
-
-                const attachments: Media[] = [];
-                if (req.file) {
-                    const filePath = path.join(
-                        process.cwd(),
-                        "data",
-                        "uploads",
-                        req.file.filename
-                    );
-                    attachments.push({
-                        id: Date.now().toString(),
-                        url: filePath,
-                        title: req.file.originalname,
-                        source: "direct",
-                        description: `Uploaded file: ${req.file.originalname}`,
-                        text: "",
-                        contentType: req.file.mimetype,
-                    });
-                }
-
-                const content: Content = {
-                    text,
-                    attachments,
-                    source: "direct",
-                    inReplyTo: undefined,
-                };
-
-                const userMessage = {
-                    content,
-                    userId,
-                    roomId,
-                    agentId: runtime.agentId,
-                };
-
-                const memory: Memory = {
-                    id: stringToUuid(messageId + "-" + userId),
-                    ...userMessage,
-                    agentId: runtime.agentId,
-                    userId,
-                    roomId,
-                    content,
-                    createdAt: Date.now(),
-                };
-
-                await runtime.messageManager.addEmbeddingToMemory(memory);
-                await runtime.messageManager.createMemory(memory);
-
-                let state = await runtime.composeState(userMessage, {
-                    agentName: runtime.character.name,
-                });
-
-                const context = composeContext({
-                    state,
-                    template: messageHandlerTemplate,
-                });
-
-                const response = await generateMessageResponse({
-                    runtime: runtime,
-                    context,
-                    modelClass: ModelClass.LARGE,
-                });
-
-                if (!response) {
-                    res.status(500).send(
-                        "No response from generateMessageResponse"
-                    );
-                    return;
-                }
-
-                // save response to memory
-                const responseMessage: Memory = {
-                    id: stringToUuid(messageId + "-" + runtime.agentId),
-                    ...userMessage,
-                    userId: runtime.agentId,
-                    content: response,
-                    embedding: getEmbeddingZeroVector(),
-                    createdAt: Date.now(),
-                };
-
-                await runtime.messageManager.createMemory(responseMessage);
-
-                state = await runtime.updateRecentMessageState(state);
-
-                let message = null as Content | null;
-
-                await runtime.processActions(
-                    memory,
-                    [responseMessage],
-                    state,
-                    async (newMessages) => {
-                        message = newMessages;
-                        return [memory];
-                    }
-                );
-
-                await runtime.evaluate(memory, state);
-
-                // Check if we should suppress the initial message
-                const action = runtime.actions.find(
-                    (a) => a.name === response.action
-                );
-                const shouldSuppressInitialMessage =
-                    action?.suppressInitialMessage;
-
-                if (!shouldSuppressInitialMessage) {
-                    if (message) {
-                        res.json([response, message]);
-                    } else {
-                        res.json([response]);
-                    }
-                } else {
-                    if (message) {
-                        res.json([message]);
-                    } else {
-                        res.json([]);
-                    }
-                }
-            }
-        );
-
-        this.app.post(
-            "/agents/:agentIdOrName/hyperfi/v1",
-            async (req: express.Request, res: express.Response) => {
-                // get runtime
-                const agentId = req.params.agentIdOrName;
-                let runtime = this.agents.get(agentId);
-                // if runtime is null, look for runtime with the same name
-                if (!runtime) {
-                    runtime = Array.from(this.agents.values()).find(
-                        (a) =>
-                            a.character.name.toLowerCase() ===
-                            agentId.toLowerCase()
-                    );
-                }
-                if (!runtime) {
-                    res.status(404).send("Agent not found");
-                    return;
-                }
-
-                // can we be in more than one hyperfi world at once
-                // but you may want the same context is multiple worlds
-                // this is more like an instanceId
-                const roomId = stringToUuid(req.body.roomId ?? "hyperfi");
-
-                const body = req.body;
-
-                // hyperfi specific parameters
-                let nearby = [];
-                let availableEmotes = [];
-
-                if (body.nearby) {
-                    nearby = body.nearby;
-                }
-                if (body.messages) {
-                    // loop on the messages and record the memories
-                    // might want to do this in parallel
-                    for (const msg of body.messages) {
-                        const parts = msg.split(/:\s*/);
-                        const mUserId = stringToUuid(parts[0]);
-                        await runtime.ensureConnection(
-                            mUserId,
-                            roomId, // where
-                            parts[0], // username
-                            parts[0], // userScreeName?
-                            "hyperfi"
-                        );
-                        const content: Content = {
-                            text: parts[1] || "",
-                            attachments: [],
-                            source: "hyperfi",
-                            inReplyTo: undefined,
-                        };
-                        const memory: Memory = {
-                            id: stringToUuid(msg),
-                            agentId: runtime.agentId,
-                            userId: mUserId,
-                            roomId,
-                            content,
-                        };
-                        await runtime.messageManager.createMemory(memory);
-                    }
-                }
-                if (body.availableEmotes) {
-                    availableEmotes = body.availableEmotes;
-                }
-
-                const content: Content = {
-                    // we need to compose who's near and what emotes are available
-                    text: JSON.stringify(req.body),
-                    attachments: [],
-                    source: "hyperfi",
-                    inReplyTo: undefined,
-                };
-
-                const userId = stringToUuid("hyperfi");
-                const userMessage = {
-                    content,
-                    userId,
-                    roomId,
-                    agentId: runtime.agentId,
-                };
-
-                const state = await runtime.composeState(userMessage, {
-                    agentName: runtime.character.name,
-                });
-
-                let template = hyperfiHandlerTemplate;
-                template = template.replace(
-                    "{{emotes}}",
-                    availableEmotes.join("|")
-                );
-                template = template.replace("{{nearby}}", nearby.join("|"));
-                const context = composeContext({
-                    state,
-                    template,
-                });
-
-                function createHyperfiOutSchema(
-                    nearby: string[],
-                    availableEmotes: string[]
-                ) {
-                    const lookAtSchema =
-                        nearby.length > 1
-                            ? z
-                                  .union(
-                                      nearby.map((item) => z.literal(item)) as [
-                                          z.ZodLiteral<string>,
-                                          z.ZodLiteral<string>,
-                                          ...z.ZodLiteral<string>[],
-                                      ]
-                                  )
-                                  .nullable()
-                            : nearby.length === 1
-                              ? z.literal(nearby[0]).nullable()
-                              : z.null(); // Fallback for empty array
-
-                    const emoteSchema =
-                        availableEmotes.length > 1
-                            ? z
-                                  .union(
-                                      availableEmotes.map((item) =>
-                                          z.literal(item)
-                                      ) as [
-                                          z.ZodLiteral<string>,
-                                          z.ZodLiteral<string>,
-                                          ...z.ZodLiteral<string>[],
-                                      ]
-                                  )
-                                  .nullable()
-                            : availableEmotes.length === 1
-                              ? z.literal(availableEmotes[0]).nullable()
-                              : z.null(); // Fallback for empty array
-
-                    return z.object({
-                        lookAt: lookAtSchema,
-                        emote: emoteSchema,
-                        say: z.string().nullable(),
-                        actions: z.array(z.string()).nullable(),
-                    });
-                }
-
-                // Define the schema for the expected output
-                const hyperfiOutSchema = createHyperfiOutSchema(
-                    nearby,
-                    availableEmotes
-                );
-
-                // Call LLM
-                const response = await generateObject({
-                    runtime,
-                    context,
-                    modelClass: ModelClass.SMALL, // 1s processing time on openai small
-                    schema: hyperfiOutSchema,
-                });
-
-                if (!response) {
-                    res.status(500).send(
-                        "No response from generateMessageResponse"
-                    );
-                    return;
-                }
-
-                let hfOut;
-                try {
-                    hfOut = hyperfiOutSchema.parse(response.object);
-                } catch {
-                    elizaLogger.error(
-                        "cant serialize response",
-                        response.object
-                    );
-                    res.status(500).send("Error in LLM response, try again");
-                    return;
-                }
-
-                // do this in the background
-                new Promise((resolve) => {
-                    const contentObj: Content = {
-                        text: hfOut.say,
-                    };
-
-                    if (hfOut.lookAt !== null || hfOut.emote !== null) {
-                        contentObj.text += ". Then I ";
-                        if (hfOut.lookAt !== null) {
-                            contentObj.text += "looked at " + hfOut.lookAt;
-                            if (hfOut.emote !== null) {
-                                contentObj.text += " and ";
-                            }
-                        }
-                        if (hfOut.emote !== null) {
-                            contentObj.text = "emoted " + hfOut.emote;
-                        }
-                    }
-
-                    if (hfOut.actions !== null) {
-                        // content can only do one action
-                        contentObj.action = hfOut.actions[0];
-                    }
-
-                    // save response to memory
-                    const responseMessage = {
-                        ...userMessage,
-                        userId: runtime.agentId,
-                        content: contentObj,
-                    };
-
-                    runtime.messageManager
-                        .createMemory(responseMessage)
-                        .then(() => {
-                            const messageId = stringToUuid(
-                                Date.now().toString()
-                            );
-                            const memory: Memory = {
-                                id: messageId,
-                                agentId: runtime.agentId,
-                                userId,
-                                roomId,
-                                content,
-                                createdAt: Date.now(),
-                            };
-
-                            // run evaluators (generally can be done in parallel with processActions)
-                            // can an evaluator modify memory? it could but currently doesn't
-                            runtime.evaluate(memory, state).then(() => {
-                                // only need to call if responseMessage.content.action is set
-                                if (contentObj.action) {
-                                    // pass memory (query) to any actions to call
-                                    runtime.processActions(
-                                        memory,
-                                        [responseMessage],
-                                        state,
-                                        async (_newMessages) => {
-                                            // FIXME: this is supposed override what the LLM said/decided
-                                            // but the promise doesn't make this possible
-                                            //message = newMessages;
-                                            return [memory];
-                                        }
-                                    ); // 0.674s
-                                }
-                                resolve(true);
-                            });
-                        });
-                });
-                res.json({ response: hfOut });
-            }
-        );
-
-        this.app.post(
-            "/:agentId/image",
-            async (req: express.Request, res: express.Response) => {
-                const agentId = req.params.agentId;
-                const agent = this.agents.get(agentId);
-                if (!agent) {
-                    res.status(404).send("Agent not found");
-                    return;
-                }
-
-                const images = await generateImage({ ...req.body }, agent);
-                const imagesRes: { image: string; caption: string }[] = [];
-                if (images.data && images.data.length > 0) {
-                    for (let i = 0; i < images.data.length; i++) {
-                        const caption = await generateCaption(
-                            { imageUrl: images.data[i] },
-                            agent
-                        );
-                        imagesRes.push({
-                            image: images.data[i],
-                            caption: caption.title,
-                        });
-                    }
-                }
-                res.json({ images: imagesRes });
-            }
-        );
-
-        this.app.post(
-            "/fine-tune",
-            async (req: express.Request, res: express.Response) => {
-                try {
-                    const response = await fetch(
-                        "https://api.bageldb.ai/api/v1/asset",
-                        {
-                            method: "POST",
-                            headers: {
-                                "Content-Type": "application/json",
-                                "X-API-KEY": `${process.env.BAGEL_API_KEY}`,
-                            },
-                            body: JSON.stringify(req.body),
-                        }
-                    );
-
-                    const data = await response.json();
-                    res.json(data);
-                } catch (error) {
-                    res.status(500).json({
-                        error: "Please create an account at bakery.bagel.net and get an API key. Then set the BAGEL_API_KEY environment variable.",
-                        details: error.message,
-                    });
-                }
-            }
-        );
-        this.app.get(
-            "/fine-tune/:assetId",
-            async (req: express.Request, res: express.Response) => {
-                const assetId = req.params.assetId;
-
-                const ROOT_DIR = path.join(process.cwd(), "downloads");
-                const downloadDir = path.resolve(ROOT_DIR, assetId);
-
-                if (!downloadDir.startsWith(ROOT_DIR)) {
-                    res.status(403).json({
-                        error: "Invalid assetId. Access denied.",
-                    });
-                    return;
-                }
-                elizaLogger.log("Download directory:", downloadDir);
-
-                try {
-                    elizaLogger.log("Creating directory...");
-                    await fs.promises.mkdir(downloadDir, { recursive: true });
-
-                    elizaLogger.log("Fetching file...");
-                    const fileResponse = await fetch(
-                        `https://api.bageldb.ai/api/v1/asset/${assetId}/download`,
-                        {
-                            headers: {
-                                "X-API-KEY": `${process.env.BAGEL_API_KEY}`,
-                            },
-                        }
-                    );
-
-                    if (!fileResponse.ok) {
-                        throw new Error(
-                            `API responded with status ${fileResponse.status}: ${await fileResponse.text()}`
-                        );
-                    }
-
-                    elizaLogger.log("Response headers:", fileResponse.headers);
-
-                    const fileName =
-                        fileResponse.headers
-                            .get("content-disposition")
-                            ?.split("filename=")[1]
-                            ?.replace(/"/g, /* " */ "") || "default_name.txt";
-
-                    elizaLogger.log("Saving as:", fileName);
-
-                    const arrayBuffer = await fileResponse.arrayBuffer();
-                    const buffer = Buffer.from(arrayBuffer);
-
-                    const filePath = path.join(downloadDir, fileName);
-                    elizaLogger.log("Full file path:", filePath);
-
-                    await fs.promises.writeFile(filePath, new Uint8Array(buffer));
-
-                    // Verify file was written
-                    const stats = await fs.promises.stat(filePath);
-                    elizaLogger.log(
-                        "File written successfully. Size:",
-                        stats.size,
-                        "bytes"
-                    );
-
-                    res.json({
-                        success: true,
-                        message: "Single file downloaded successfully",
-                        downloadPath: downloadDir,
-                        fileCount: 1,
-                        fileName: fileName,
-                        fileSize: stats.size,
-                    });
-                } catch (error) {
-                    elizaLogger.error("Detailed error:", error);
-                    res.status(500).json({
-                        error: "Failed to download files from BagelDB",
-                        details: error.message,
-                        stack: error.stack,
-                    });
-                }
-            }
-        );
-
-        this.app.post("/:agentId/speak", async (req, res) => {
+        this.app.post("/:agentId/verify-claim", async (req, res) => {
             const agentId = req.params.agentId;
-            const roomId = stringToUuid(
-                req.body.roomId ?? "default-room-" + agentId
-            );
-            const userId = stringToUuid(req.body.userId ?? "user");
-            const text = req.body.text;
-
-            if (!text) {
-                res.status(400).send("No text provided");
-                return;
-            }
+            const roomId = stringToUuid("default-room");
+            const userId = stringToUuid("user");
+            const claim = req.body.claim;
 
             let runtime = this.agents.get(agentId);
-
-            // if runtime is null, look for runtime with the same name
             if (!runtime) {
                 runtime = Array.from(this.agents.values()).find(
-                    (a) =>
-                        a.character.name.toLowerCase() === agentId.toLowerCase()
+                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
                 );
             }
 
@@ -766,254 +60,58 @@ export class DirectClient {
                 return;
             }
 
-            try {
-                // Process message through agent (same as /message endpoint)
-                await runtime.ensureConnection(
-                    userId,
-                    roomId,
-                    req.body.userName,
-                    req.body.name,
-                    "direct"
-                );
+            await runtime.ensureConnection(userId, roomId, null, null, "direct");
 
-                const messageId = stringToUuid(Date.now().toString());
+            const state = await runtime.composeState({
+                content: { text: "" },
+                userId,
+                roomId,
+                agentId: runtime.agentId
+            }, {
+                agentName: runtime.character.name,
+                claim,
+            })
 
-                const content: Content = {
-                    text,
-                    attachments: [],
-                    source: "direct",
-                    inReplyTo: undefined,
-                };
+            const result = await blueRedAggregate(runtime, state);
+            const attestation = await generateAttestation(runtime, JSON.stringify(result));
+            res.json({ attestation, result });
+        })
 
-                const userMessage = {
-                    content,
-                    userId,
-                    roomId,
-                    agentId: runtime.agentId,
-                };
-
-                const memory: Memory = {
-                    id: messageId,
-                    agentId: runtime.agentId,
-                    userId,
-                    roomId,
-                    content,
-                    createdAt: Date.now(),
-                };
-
-                await runtime.messageManager.createMemory(memory);
-
-                const state = await runtime.composeState(userMessage, {
-                    agentName: runtime.character.name,
-                });
-
-                const context = composeContext({
-                    state,
-                    template: messageHandlerTemplate,
-                });
-
-                const response = await generateMessageResponse({
-                    runtime: runtime,
-                    context,
-                    modelClass: ModelClass.LARGE,
-                });
-
-                // save response to memory
-                const responseMessage = {
-                    ...userMessage,
-                    userId: runtime.agentId,
-                    content: response,
-                };
-
-                await runtime.messageManager.createMemory(responseMessage);
-
-                if (!response) {
-                    res.status(500).send(
-                        "No response from generateMessageResponse"
-                    );
-                    return;
-                }
-
-                await runtime.evaluate(memory, state);
-
-                const _result = await runtime.processActions(
-                    memory,
-                    [responseMessage],
-                    state,
-                    async () => {
-                        return [memory];
-                    }
-                );
-
-                // Get the text to convert to speech
-                const textToSpeak = response.text;
-
-                // Convert to speech using ElevenLabs
-                const elevenLabsApiUrl = `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}`;
-                const apiKey = process.env.ELEVENLABS_XI_API_KEY;
-
-                if (!apiKey) {
-                    throw new Error("ELEVENLABS_XI_API_KEY not configured");
-                }
-
-                const speechResponse = await fetch(elevenLabsApiUrl, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "xi-api-key": apiKey,
-                    },
-                    body: JSON.stringify({
-                        text: textToSpeak,
-                        model_id:
-                            process.env.ELEVENLABS_MODEL_ID ||
-                            "eleven_multilingual_v2",
-                        voice_settings: {
-                            stability: Number.parseFloat(
-                                process.env.ELEVENLABS_VOICE_STABILITY || "0.5"
-                            ),
-                            similarity_boost: Number.parseFloat(
-                                process.env.ELEVENLABS_VOICE_SIMILARITY_BOOST ||
-                                    "0.9"
-                            ),
-                            style: Number.parseFloat(
-                                process.env.ELEVENLABS_VOICE_STYLE || "0.66"
-                            ),
-                            use_speaker_boost:
-                                process.env
-                                    .ELEVENLABS_VOICE_USE_SPEAKER_BOOST ===
-                                "true",
-                        },
-                    }),
-                });
-
-                if (!speechResponse.ok) {
-                    throw new Error(
-                        `ElevenLabs API error: ${speechResponse.statusText}`
-                    );
-                }
-
-                const audioBuffer = await speechResponse.arrayBuffer();
-
-                // Set appropriate headers for audio streaming
-                res.set({
-                    "Content-Type": "audio/mpeg",
-                    "Transfer-Encoding": "chunked",
-                });
-
-                res.send(Buffer.from(audioBuffer));
-            } catch (error) {
-                elizaLogger.error(
-                    "Error processing message or generating speech:",
-                    error
-                );
-                res.status(500).json({
-                    error: "Error processing message or generating speech",
-                    details: error.message,
-                });
-            }
-        });
-
-        this.app.post("/:agentId/tts", async (req, res) => {
-            const text = req.body.text;
-
-            if (!text) {
-                res.status(400).send("No text provided");
-                return;
-            }
-
-            try {
-                // Convert to speech using ElevenLabs
-                const elevenLabsApiUrl = `https://api.elevenlabs.io/v1/text-to-speech/${process.env.ELEVENLABS_VOICE_ID}`;
-                const apiKey = process.env.ELEVENLABS_XI_API_KEY;
-
-                if (!apiKey) {
-                    throw new Error("ELEVENLABS_XI_API_KEY not configured");
-                }
-
-                const speechResponse = await fetch(elevenLabsApiUrl, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "xi-api-key": apiKey,
-                    },
-                    body: JSON.stringify({
-                        text,
-                        model_id:
-                            process.env.ELEVENLABS_MODEL_ID ||
-                            "eleven_multilingual_v2",
-                        voice_settings: {
-                            stability: Number.parseFloat(
-                                process.env.ELEVENLABS_VOICE_STABILITY || "0.5"
-                            ),
-                            similarity_boost: Number.parseFloat(
-                                process.env.ELEVENLABS_VOICE_SIMILARITY_BOOST ||
-                                    "0.9"
-                            ),
-                            style: Number.parseFloat(
-                                process.env.ELEVENLABS_VOICE_STYLE || "0.66"
-                            ),
-                            use_speaker_boost:
-                                process.env
-                                    .ELEVENLABS_VOICE_USE_SPEAKER_BOOST ===
-                                "true",
-                        },
-                    }),
-                });
-
-                if (!speechResponse.ok) {
-                    throw new Error(
-                        `ElevenLabs API error: ${speechResponse.statusText}`
-                    );
-                }
-
-                const audioBuffer = await speechResponse.arrayBuffer();
-
-                res.set({
-                    "Content-Type": "audio/mpeg",
-                    "Transfer-Encoding": "chunked",
-                });
-
-                res.send(Buffer.from(audioBuffer));
-            } catch (error) {
-                elizaLogger.error(
-                    "Error processing message or generating speech:",
-                    error
-                );
-                res.status(500).json({
-                    error: "Error processing message or generating speech",
-                    details: error.message,
-                });
-            }
-        });
-
-        this.app.post("/:agentId/verify-claim-1-start", async (req, res) => {
+        this.app.post("/:agentId/verify-claim-frontend", async (req, res) => {
             const agentId = req.params.agentId;
-            const roomId = stringToUuid(
-                req.body.roomId ?? "default-room-" + agentId
-            );
-            const userId = stringToUuid(req.body.userId ?? "user");
-            const team = req.body.team ?? "blue";
-            const prevTeamInformation = req.body.prevTeamInformation;
-            const prevTeamDecision = req.body.prevTeamDecision;
+            const roomId = stringToUuid("default-room");
+            const userId = stringToUuid("user");
             const claim = req.body.claim;
 
-            if (!claim) {
-                res.status(400).send("No claim provided");
+            let runtime = this.agents.get(agentId);
+            if (!runtime) {
+                runtime = Array.from(this.agents.values()).find(
+                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
+                );
+            }
+
+            if (!runtime) {
+                res.status(404).send("Agent not found");
                 return;
             }
 
-            // Create a verification ID
-            const verificationId = stringToUuid(Date.now().toString());
+            await runtime.ensureConnection(userId, roomId, null, null, "direct");
+
+            const state = await runtime.composeState({
+                content: { text: "" },
+                userId,
+                roomId,
+                agentId: runtime.agentId
+            }, {
+                agentName: runtime.character.name,
+                claim,
+            })
 
             // Initialize the verification state
+            const verificationId = stringToUuid(Date.now().toString());
             this.verifications.set(verificationId, {
-                agentId,
-                roomId,
-                userId,
-                team,
-                prevTeamInformation,
-                prevTeamDecision,
-                claim,
+                state,
+                runtime,
                 logs: [],
                 completed: false,
                 result: null,
@@ -1027,7 +125,7 @@ export class DirectClient {
             res.json({ verificationId });
         });
 
-        this.app.get("/:agentId/verify-claim-1-status/:verificationId", (req, res) => {
+        this.app.get("/:agentId/verify-claim-frontend-status/:verificationId", (req, res) => {
             const verificationId = req.params.verificationId;
             const verification = this.verifications.get(verificationId);
 
@@ -1045,72 +143,6 @@ export class DirectClient {
 
             // Clear logs after sending them
             verification.logs = [];
-            this.verifications.set(verificationId, verification);
-        });
-
-        this.app.post("/:agentId/verify-claim-2-start", async (req, res) => {
-            const agentId = req.params.agentId;
-            const roomId = stringToUuid(
-                req.body.roomId ?? "default-room-" + agentId
-            );
-            const userId = stringToUuid(req.body.userId ?? "user");
-            const blueTeamDecision = req.body.blueTeamDecision;
-            const redTeamDecision = req.body.redTeamDecision;
-            const blueTeamInformation = req.body.blueTeamInformation;
-            const redTeamInformation = req.body.redTeamInformation;
-            const claim = req.body.claim;
-
-            if (!claim) {
-                res.status(400).send("No claim provided");
-                return;
-            }
-
-            // Create a verification ID
-            const verificationId = stringToUuid(Date.now().toString());
-
-            // Initialize the verification state
-            this.verifications.set(verificationId, {
-                agentId,
-                roomId,
-                userId,
-                blueTeamDecision,
-                redTeamDecision,
-                blueTeamInformation,
-                redTeamInformation,
-                claim,
-                logs: [],
-                completed: false,
-                result: null,
-                lastUpdated: Date.now(),
-                type: 'aggregation'
-            });
-
-            // Start the aggregation process in the background
-            this.runAggregation(verificationId);
-
-            // Return the verification ID immediately
-            res.json({ verificationId });
-        });
-
-        this.app.get("/:agentId/verify-claim-2-status/:verificationId", (req, res) => {
-            const verificationId = req.params.verificationId;
-            const verification = this.verifications.get(verificationId);
-
-            if (!verification) {
-                res.status(404).send("Verification not found");
-                return;
-            }
-
-            // Return the current status
-            res.json({
-                completed: verification.completed,
-                logs: verification.logs,
-                result: verification.result
-            });
-
-            // Clear logs after sending them
-            verification.logs = [];
-            this.verifications.set(verificationId, verification);
         });
     }
 
@@ -1166,251 +198,35 @@ export class DirectClient {
         const verification = this.verifications.get(verificationId);
         if (!verification) return;
 
-        const { agentId, roomId, userId, team, prevTeamInformation, prevTeamDecision, claim } = verification;
+        const { state, runtime } = verification;
 
-        try {
-            let runtime = this.agents.get(agentId);
-            if (!runtime) {
-                runtime = Array.from(this.agents.values()).find(
-                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
-                );
-            }
-
-            if (!runtime) {
-                verification.logs.push(`[${team}] Error: Agent not found`);
-                verification.completed = true;
-                this.verifications.set(verificationId, verification);
-                return;
-            }
-
-            await runtime.ensureConnection(userId, roomId, null, null, "direct");
-
-            // Log function that updates the verification state
-            const logMessage = (message) => {
-                elizaLogger.info(message);
-                const current = this.verifications.get(verificationId);
-                if (current) {
-                    current.logs.push(`[${team}] ${message}`);
-                    current.lastUpdated = Date.now();
-                    this.verifications.set(verificationId, current);
-                }
-            };
-
-            logMessage(`Starting claim verification for: "${claim}"`);
-
-            let state = await runtime.composeState({
-                content: { text: "" },
-                userId,
-                roomId,
-                agentId: runtime.agentId
-            }, {
-                agentName: runtime.character.name,
-                claim,
-            });
-
-            // Generate queries
-            logMessage("Generating search queries...");
-            const queryContext = composeContext({
-                state,
-                template: queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
-            });
-
-            const queries = (await generateMessageResponse({
-                runtime: runtime,
-                context: queryContext,
-                modelClass: ModelClass.LARGE,
-            }) as any).queries as string[];
-
-            if (!queries) {
-                logMessage("Error: No queries generated");
-                verification.completed = true;
-                this.verifications.set(verificationId, verification);
-                return;
-            }
-
-            logMessage(`Generated ${team} team queries: ${queries.join(', ')}`);
-
-            const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
-            const availableProviders = Array.from(webSearchService.providers?.keys() || []);
-            logMessage(`Available search providers: ${availableProviders.join(', ') || 'none'}`);
-
-            // Get Results using all available providers
-            logMessage("Searching for information...");
-            const queryResults = await doWebSearch(queries, team, webSearchService, logMessage);
-            logMessage(`Completed ${team} team query searches`);
-
-            // Reason
-            state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
-
-            logMessage(`Starting ${team} team decision making process`);
-            let decisionTries = 0;
-
-            let decision = null;
-            while (decisionTries < 5) {
-                const decisionContext = composeContext({
-                    state,
-                    template: decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
-                });
-
-                decision = await generateMessageResponse({
-                    runtime: runtime,
-                    context: decisionContext,
-                    modelClass: ModelClass.LARGE,
-                });
-
-                if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
-                    logMessage(`${team} team decided to make additional queries: ${(decision.additional_queries as string[]).join(', ')}`);
-                    const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService, logMessage);
-                    state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
-                } else {
-                    break;
-                }
-                decisionTries++;
-            }
-
-            logMessage(`${team} team decision completed`);
-
-            // Update verification with the result
-            verification.result = { decision, queryResults: state["queryResults"] };
-            verification.completed = true;
-            this.verifications.set(verificationId, verification);
-
-            // Clean up old verifications periodically
-            this.cleanupVerifications();
-
-        } catch (error) {
+        // Log function that updates the verification state
+        const logMessage = (team, message) => {
+            elizaLogger.info(message);
             const current = this.verifications.get(verificationId);
             if (current) {
-                current.logs.push(`[${team}] Error: ${error.message}`);
-                current.completed = true;
+                current.logs.push(`[${team}] ${message}`);
+                current.lastUpdated = Date.now();
                 this.verifications.set(verificationId, current);
             }
-        }
-    }
-
-    // Add this method to clean up old verifications
-    cleanupVerifications() {
-        const now = Date.now();
-        const maxAge = 30 * 60 * 1000; // 30 minutes
-
-        for (const [id, verification] of this.verifications.entries()) {
-            if (verification.completed && now - verification.lastUpdated > maxAge) {
-                this.verifications.delete(id);
-            }
-        }
-    }
-
-    async runAggregation(verificationId) {
-        const verification = this.verifications.get(verificationId);
-        if (!verification) {
-            elizaLogger.error(`Verification not found for ID: ${verificationId}`);
-            return;
-        }
-
-        const {
-            agentId,
-            roomId,
-            userId,
-            claim,
-            blueTeamDecision,
-            redTeamDecision,
-            blueTeamInformation,
-            redTeamInformation
-        } = verification;
+        };
 
         try {
-            elizaLogger.info(`Starting aggregation for verification ID: ${verificationId}`);
-
-            let runtime = this.agents.get(agentId);
-            if (!runtime) {
-                runtime = Array.from(this.agents.values()).find(
-                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
-                );
-            }
-
-            if (!runtime) {
-                elizaLogger.error(`Agent not found: ${agentId}`);
-                verification.logs.push(`[final] Error: Agent not found`);
-                verification.completed = true;
-                this.verifications.set(verificationId, verification);
-                return;
-            }
-
-            await runtime.ensureConnection(userId, roomId, null, null, "direct");
-
-            // Log function that updates the verification state
-            const logMessage = (message) => {
-                elizaLogger.info(message);
-                const current = this.verifications.get(verificationId);
-                if (current) {
-                    current.logs.push(`[final] ${message}`);
-                    current.lastUpdated = Date.now();
-                    this.verifications.set(verificationId, current);
-                }
-            };
-
-            logMessage(`Starting final aggregation for claim: "${claim}"`);
-
-            // Log the inputs to help debug
-            elizaLogger.debug(`Aggregation inputs:
-                blueTeamDecision: ${JSON.stringify(blueTeamDecision)}
-                redTeamDecision: ${JSON.stringify(redTeamDecision)}
-                blueTeamInformation length: ${blueTeamInformation ? blueTeamInformation.length : 0}
-                redTeamInformation length: ${redTeamInformation ? redTeamInformation.length : 0}
-            `);
-
-            let state = await runtime.composeState({
-                content: { text: "" },
-                userId,
-                roomId,
-                agentId: runtime.agentId
-            }, {
-                agentName: runtime.character.name,
-                claim,
-            });
-
-            // Aggregation
-            logMessage("Processing team decisions and evidence...");
-            const aggregatorContext = composeContext({
-                state,
-                template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
-            });
-
-            elizaLogger.debug("Calling generateMessageResponse for aggregation");
-            const aggregationResult = await generateMessageResponse({
-                runtime: runtime,
-                context: aggregatorContext,
-                modelClass: ModelClass.LARGE,
-            });
-
-            elizaLogger.debug(`Aggregation result: ${JSON.stringify(aggregationResult)}`);
-
-            if (!aggregationResult) {
-                logMessage("Error: No response from aggregation");
-                verification.completed = true;
-                this.verifications.set(verificationId, verification);
-                return;
-            }
-
-            logMessage("Claim verification completed successfully");
-
-            // Update verification with the result
-            verification.result = aggregationResult;
+            const result = await blueRedAggregate(runtime, state, logMessage);
+            verification.result = result;
             verification.completed = true;
-            this.verifications.set(verificationId, verification);
-
-            // Clean up old verifications periodically
-            this.cleanupVerifications();
-
         } catch (error) {
-            elizaLogger.error(`Error in runAggregation: ${error.message}`, error);
-            const current = this.verifications.get(verificationId);
-            if (current) {
-                current.logs.push(`[final] Error: ${error.message}`);
-                current.completed = true;
-                this.verifications.set(verificationId, current);
-            }
+            verification.logs.push(`[final] Error: ${error.message}`);
+            verification.completed = true;
         }
+
+        this.cleanupVerification(verificationId);
+    }
+
+    cleanupVerification(verificationId: string) {
+        setTimeout(() => {
+            this.verifications.delete(verificationId);
+        }, 5000)
     }
 }
 
@@ -1438,13 +254,100 @@ const directPlugin: Plugin = {
 };
 export default directPlugin;
 
-async function doWebSearch(queries: string[], team: "blue" | "red", webSearchService: any, logMessage?: (message: string) => void): Promise<{query: string, text: string}[]> {
+async function blueRedAggregate(runtime: IAgentRuntime, state: State, logMessage: LogFunction = defaultLogFunction) {
+    const { information: blueTeamInformation, decision: blueTeamDecision } = await doTeam(runtime, state, "blue", undefined, undefined, logMessage);
+    const { information: redTeamInformation, decision: redTeamDecision } = await doTeam(runtime, state, "red", blueTeamInformation, blueTeamDecision, logMessage);
+    return await aggregateTeams(runtime, state, blueTeamInformation, blueTeamDecision, redTeamInformation, redTeamDecision, logMessage);
+}
+
+async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red", prevTeamInformation?: string, prevTeamDecision?: any, logMessage: LogFunction = defaultLogFunction): Promise<{information: string, decision: any}> {
+    // Generate queries
+    const queryContext = composeContext({
+        state,
+        template: queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
+    });
+
+    const queries = (await generateMessageResponse({
+        runtime: runtime,
+        context: queryContext,
+        modelClass: ModelClass.LARGE,
+    }) as any).queries as string[];
+
+    if (!queries) {
+        throw new Error("Error: No queries generated");
+    }
+
+    logMessage(team, `Generated ${team} team queries: ${queries.join(', ')}`);
+
+    const webSearchService = runtime.getService(ServiceType.WEB_SEARCH) as any;
+    const availableProviders = Array.from(webSearchService.providers?.keys() || []);
+    logMessage(team, `Available search providers: ${availableProviders.join(', ') || 'none'}`);
+
+    // Get Results using all available providers
+    logMessage(team, "Searching for information...");
+    const queryResults = await doWebSearch(queries, team, webSearchService, logMessage);
+    logMessage(team, `Completed ${team} team query searches`);
+
+    // Reason
+    state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
+
+    logMessage(team, `Starting ${team} team decision making process`);
+    let decisionTries = 0;
+
+    let decision = null;
+    while (decisionTries < 5) {
+        const decisionContext = composeContext({
+            state,
+            template: decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
+        });
+
+        decision = await generateMessageResponse({
+            runtime: runtime,
+            context: decisionContext,
+            modelClass: ModelClass.LARGE,
+        });
+
+        if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
+            logMessage(team, `${team} team decided to make additional queries: ${(decision.additional_queries as string[]).join(', ')}`);
+            const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService, logMessage);
+            state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
+        } else {
+            break;
+        }
+        decisionTries++;
+    }
+
+    logMessage(team, `${team} team decision completed`);
+
+    // Update verification with the result
+    return { decision, information: state["queryResults"] as string };
+}
+
+async function aggregateTeams(runtime: IAgentRuntime, state: State, blueTeamInformation: string, blueTeamDecision: any, redTeamInformation: string, redTeamDecision: any, logMessage: LogFunction = defaultLogFunction) {
+    logMessage("final", `Starting final aggregation for claim: "${state.claim}"`);
+
+    const aggregatorContext = composeContext({
+        state,
+        template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
+    });
+
+    logMessage("final", "Processing team decisions and evidence...");
+    const aggregationResult = await generateMessageResponse({
+        runtime: runtime,
+        context: aggregatorContext,
+        modelClass: ModelClass.LARGE,
+    });
+
+    logMessage("final", "Claim verification completed successfully");
+    return aggregationResult;
+}
+
+async function doWebSearch(queries: string[], team: "blue" | "red", webSearchService: any, logMessage: LogFunction = defaultLogFunction): Promise<{query: string, text: string}[]> {
     let promises = [];
     for (const query of queries) {
         promises.push(new Promise(async (resolve, reject) => {
             try {
-                if (logMessage) logMessage(`Executing ${team} team query: "${query}"`);
-                else elizaLogger.info(`Executing ${team} team query: "${query}"`);
+                logMessage(team, `Executing ${team} team query: "${query}"`);
 
                 // Use all available providers
                 const searchResponse = await webSearchService.search(
@@ -1452,19 +355,11 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                     { provider: "both" } // Use all available providers
                 );
 
-                if (logMessage) {
-                    logMessage(`Search completed for "${query}" using provider(s): ${
-                        searchResponse.usedProviders && searchResponse.usedProviders.length > 0
-                            ? searchResponse.usedProviders.join(', ')
-                            : searchResponse.provider
-                    }`);
-                } else {
-                    elizaLogger.info(`Search completed for "${query}" using provider(s): ${
-                        searchResponse.usedProviders && searchResponse.usedProviders.length > 0
-                            ? searchResponse.usedProviders.join(', ')
-                            : searchResponse.provider
-                    }`);
-                }
+                logMessage(team, `Search completed for "${query}" using provider(s): ${
+                    searchResponse.usedProviders && searchResponse.usedProviders.length > 0
+                        ? searchResponse.usedProviders.join(', ')
+                        : searchResponse.provider
+                }`);
 
                 elizaLogger.debug(`Search response details: provider=${searchResponse.provider}, usedProviders=${JSON.stringify(searchResponse.usedProviders || [])}`);
 
@@ -1475,8 +370,7 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                             .filter(key => key !== 'provider' && key !== 'combinedResults')
                             .join(', ');
 
-                        if (logMessage) logMessage(`Got results from providers (${providerNames}) for "${query}"`);
-                        else elizaLogger.info(`Got results from providers (${providerNames}) for "${query}"`);
+                        logMessage(team, `Got results from providers (${providerNames}) for "${query}"`);
 
                         resolve({
                             query,
@@ -1489,8 +383,7 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                     }
                     // Handle single provider results
                     else if (searchResponse.results?.length) {
-                        if (logMessage) logMessage(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
-                        else elizaLogger.info(`Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
+                        logMessage(team, `Got results from ${searchResponse.provider} for "${query}" (${searchResponse.results.length} results)`);
 
                         resolve({
                             query,
@@ -1501,33 +394,42 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                         });
                     }
                     else {
-                        if (logMessage) logMessage(`No relevant results found for "${query}"`);
-                        else elizaLogger.warn(`No relevant results found for "${query}"`);
+                        logMessage(team, `No relevant results found for "${query}"`);
 
                         resolve({
                             query,
-                            text: "No relevant results found.",
+                            text: "NO RESULTS FOUND",
                         });
                     }
                 } else {
-                    if (logMessage) logMessage(`Search failed or returned no data for "${query}"`);
-                    else elizaLogger.error(`Search failed or returned no data for "${query}"`);
+                    logMessage(team, `Search failed or returned no data for "${query}"`);
 
                     resolve({
                         query,
-                        text: "Search failed to return results."
+                        text: "NO RESULTS FOUND"
                     });
                 }
             } catch (error) {
-                if (logMessage) logMessage(`Error during search for "${query}": ${error.message}`);
-                else elizaLogger.error(`Error during search for "${query}":`, error);
+                logMessage(team, `Error during search for "${query}": ${error.message}`);
 
                 resolve({
                     query,
-                    text: "Error during search"
+                    text: "ERROR DURING SEARCH"
                 });
             }
         }));
     }
     return await Promise.all(promises);
+}
+
+async function generateAttestation(runtime: IAgentRuntime, info: string) {
+    const remoteAttestationProvider = runtime.getService("TEE" as ServiceType) as any;
+    const attestation = await (remoteAttestationProvider as any).generateAttestation(info);
+    return attestation;
+}
+
+
+type LogFunction = (team: "blue" | "red" | "final", message: string) => void;
+function defaultLogFunction(team: "blue" | "red" | "final", message: string) {
+    elizaLogger.info(message);
 }

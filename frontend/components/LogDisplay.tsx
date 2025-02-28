@@ -1,52 +1,68 @@
-"use client";
+"use client"
 
-import React from 'react';
-import { cn } from '../lib/utils';
+import React, { useEffect } from "react"
+import { ChevronRight } from "lucide-react"
 
 interface LogDisplayProps {
-  logs: string[];
-  className?: string;
+  logs: string[]
+  autoScroll?: boolean
+  showLineNumbers?: boolean
 }
 
-export default function LogDisplay({ logs, className }: LogDisplayProps) {
-  const logEndRef = React.useRef<HTMLDivElement>(null);
+export default function LogDisplay({ logs = [], autoScroll = true, showLineNumbers = true }: LogDisplayProps) {
+  const logEndRef = React.useRef<HTMLDivElement>(null)
 
-  React.useEffect(() => {
-    // Scroll to bottom when logs update
-    if (logEndRef.current) {
-      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  // Auto-scroll to bottom when logs change
+  useEffect(() => {
+    if (autoScroll && logEndRef.current) {
+      logEndRef.current.scrollIntoView({ behavior: "smooth" })
     }
-  }, [logs]);
+  }, [autoScroll, logs])
+
+  const getLogColor = (log: string) => {
+    if (log.startsWith("[blue]")) {
+      return "text-blue-400"
+    } else if (log.startsWith("[red]")) {
+      return "text-red-400"
+    } else if (log.startsWith("[final]")) {
+      return "text-yellow-400"
+    }
+    return "text-gray-300"
+  }
+
+  const formatLog = (log: string) => {
+    // Remove the prefix for display
+    if (log.startsWith("[blue]") || log.startsWith("[red]") || log.startsWith("[final]")) {
+      return log.substring(log.indexOf("]") + 1).trim()
+    }
+    return log
+  }
 
   return (
-    <div className={cn("bg-black text-green-400 p-4 rounded-md font-mono text-sm overflow-y-auto max-h-[400px]", className)}>
-      <div className="space-y-1">
+    <div className="w-full border border-gray-800 rounded-md bg-gray-950 shadow-md">
+      <div
+        className="p-4 h-80 overflow-y-auto font-mono text-sm"
+        style={{
+          display: "grid",
+          gridTemplateColumns: showLineNumbers ? "2.5rem 1rem 1fr" : "1rem 1fr",
+          gap: "0.25rem 0.5rem",
+        }}
+      >
         {logs.length === 0 ? (
-          <div className="text-gray-500">No logs available yet...</div>
+          <div className="text-gray-500 italic col-span-full">No logs to display</div>
         ) : (
-          logs.map((log, index) => {
-            // Determine log type by prefix
-            const isBlue = log.startsWith('[blue]');
-            const isRed = log.startsWith('[red]');
-            const isFinal = log.startsWith('[final]');
-
-            // Apply different styling based on log type
-            const logClass = cn(
-              "whitespace-pre-wrap break-words",
-              isBlue && "text-blue-400",
-              isRed && "text-red-400",
-              isFinal && "text-yellow-400"
-            );
-
-            return (
-              <div key={index} className={logClass}>
-                {log}
+          logs.map((log, index) => (
+            <React.Fragment key={index}>
+              {showLineNumbers && <div className="text-gray-600 text-right select-none">{index + 1}</div>}
+              <div className="flex items-start">
+                <ChevronRight className="h-4 w-4 text-gray-600 mt-0.5" />
               </div>
-            );
-          })
+              <div className={`${getLogColor(log)} break-words`}>{formatLog(log)}</div>
+            </React.Fragment>
+          ))
         )}
         <div ref={logEndRef} />
       </div>
     </div>
-  );
+  )
 }
