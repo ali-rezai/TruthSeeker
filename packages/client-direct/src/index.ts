@@ -266,7 +266,7 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
         state,
         template: queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
     });
-
+    
     const queries = (await generateMessageResponse({
         runtime: runtime,
         context: queryContext,
@@ -350,10 +350,11 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                 logMessage(team, `Executing ${team} team query: "${query}"`);
 
                 // Use all available providers
-                const searchResponse = await webSearchService.search(
-                    query,
-                    { provider: "both" } // Use all available providers
-                );
+                const searchResponse = await webSearchService.search(query, {
+                    tavily: {
+                        includeAnswer: true,  
+                    }
+                });
 
                 logMessage(team, `Search completed for "${query}" using provider(s): ${
                     searchResponse.usedProviders && searchResponse.usedProviders.length > 0
@@ -365,20 +366,16 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
 
                 if (searchResponse) {
                     // Handle combined results from multiple providers
-                    if (searchResponse.provider === "both" && searchResponse.combinedResults) {
-                        const providerNames = Object.keys(searchResponse)
-                            .filter(key => key !== 'provider' && key !== 'combinedResults')
-                            .join(', ');
-
+                    if (searchResponse.provider === "all" && searchResponse.combinedResults) {
+                        const providerNames = searchResponse.usedProviders.join(', ');
                         logMessage(team, `Got results from providers (${providerNames}) for "${query}"`);
 
                         resolve({
                             query,
-                            text: searchResponse.tavily?.answer ||
-                                  `Search results from ${providerNames}: ` +
-                                  searchResponse.combinedResults.map(r =>
-                                    `[${r.source}] ${r.title}: ${r.content?.substring(0, 200)}...`
-                                  ).join("\n\n"),
+                            text: (searchResponse.tavily?.answer ? `##### Result from tavily #####\n${searchResponse.tavily.answer}\n` : "") +
+                                searchResponse.combinedResults.map(r =>
+                                    `##### Result from ${r.source} | Title: ${r.title} #####\n${r.content?.substring(0, 500)}...`
+                                ).join("\n"),
                         });
                     }
                     // Handle single provider results
@@ -387,10 +384,10 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
 
                         resolve({
                             query,
-                            text: searchResponse.answer ||
-                                  searchResponse.results.map(r =>
-                                    `${r.title}: ${r.content?.substring(0, 200) || r.text?.substring(0, 200)}...`
-                                  ).join("\n\n"),
+                            text: (searchResponse.answer ? `##### Results #####\n${searchResponse.answer}\n\n` : "") +
+                                searchResponse.results.map(r =>
+                                    `${r.title}: ${r.content?.substring(0, 500) || r.text?.substring(0, 500)}...`
+                                ).join("\n\n"),
                         });
                     }
                     else {

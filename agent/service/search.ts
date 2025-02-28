@@ -1,7 +1,7 @@
 import { tavily } from "@tavily/core";
-import { Service, ServiceType, type IAgentRuntime } from "@elizaos/core";
 import Exa from "exa-js";
 import { elizaLogger } from "@elizaos/core";
+import { Service, ServiceType, type IAgentRuntime } from "@elizaos/core";
 
 export type TavilyClient = ReturnType<typeof tavily>; // declaring manually because original package does not export its types
 export type ExaClient = Exa;
@@ -9,9 +9,9 @@ export type ExaClient = Exa;
 export enum SearchProvider {
     TAVILY = "tavily",
     EXA = "exa",
-    PERPLEXITY = "perplexity",
     SERPER = "serper",
-    BOTH = "both" // default
+    PERPLEXITY = "perplexity",
+    ALL = "all"
 }
 
 // Base interface for search providers
@@ -29,11 +29,11 @@ class RateLimiter {
         fn: () => Promise<any>;
     }> = [];
     private processing = false;
-    private lastRequestTime = 0;
-    private readonly minTimeBetweenRequests: number;
+    private requestTimes: number[] = [];
+    private readonly maxPerSecond: number;
 
-    constructor(requestsPerSecond: number = 5) {
-        this.minTimeBetweenRequests = 1000 / requestsPerSecond;
+    constructor(maxPerSecond: number) {
+        this.maxPerSecond = maxPerSecond;
     }
 
     async schedule<T>(fn: () => Promise<T>): Promise<T> {
@@ -45,32 +45,43 @@ class RateLimiter {
 
     private async processQueue() {
         if (this.processing || this.queue.length === 0) return;
-
         this.processing = true;
 
         try {
-            const now = Date.now();
-            const timeToWait = Math.max(0, this.lastRequestTime + this.minTimeBetweenRequests - now);
+            while (this.queue.length > 0) {
+                // Clean up old request times
+                const now = Date.now();
+                this.requestTimes = this.requestTimes.filter(time => now - time < 1000);
 
-            if (timeToWait > 0) {
-                await new Promise(resolve => setTimeout(resolve, timeToWait));
-            }
+                // If we have max concurrent requests running and the earliest one isn't 1 sec old yet, wait
+                if (this.requestTimes.length >= this.maxPerSecond) {
+                    const earliestRequest = this.requestTimes[0];
+                    const timeToWait = Math.max(0, earliestRequest + 1000 - now);
+                    if (timeToWait > 0) {
+                        await new Promise(resolve => setTimeout(resolve, timeToWait));
+                        continue;
+                    }
+                }
 
-            const { resolve, reject, fn } = this.queue.shift();
+                // Process next batch of requests
+                const batchSize = Math.min(
+                    this.maxPerSecond - this.requestTimes.length,
+                    this.queue.length
+                );
+                const batch = this.queue.splice(0, batchSize);
+                const currentTime = Date.now();
 
-            this.lastRequestTime = Date.now();
-
-            try {
-                const result = await fn();
-                resolve(result);
-            } catch (error) {
-                reject(error);
+                batch.forEach(({ resolve, reject, fn }) => {
+                    this.requestTimes.push(currentTime);
+                    fn().then(result => {
+                        resolve(result);
+                    }).catch(error => {
+                        reject(error);
+                    });
+                });
             }
         } finally {
             this.processing = false;
-            if (this.queue.length > 0) {
-                this.processQueue();
-            }
         }
     }
 }
@@ -100,19 +111,16 @@ export class TavilyProvider implements ISearchProvider {
 
         elizaLogger.debug(`Executing Tavily search for: "${query}"`);
         const response = await this._client.search(query, {
-            includeAnswer: options?.includeAnswer || true,
-            maxResults: options?.limit || 3,
-            topic: options?.type || "general",
-            searchDepth: options?.searchDepth || "basic",
-            includeImages: options?.includeImages || false,
-            days: options?.days || 3,
-        });
+            includeAnswer: options?.tavily?.includeAnswer || false,
+            maxResults: options?.tavily?.limit || 3,
+            topic: options?.tavily?.type || "general",
+            searchDepth: options?.tavily?.searchDepth || "basic",
+            includeImages: options?.tavily?.includeImages || false,
+        }) as any;
         elizaLogger.debug(`Tavily search completed for: "${query}"`);
 
-        return {
-            ...response,
-            provider: SearchProvider.TAVILY
-        };
+        response.provider = SearchProvider.TAVILY;
+        return response;
     }
 
     get client(): TavilyClient {
@@ -152,21 +160,28 @@ export class ExaProvider implements ISearchProvider {
                 const result = await this._client.searchAndContents(
                     query,
                     {
-                        type: options?.exaType || "auto",
+                        moderation: options?.exa?.moderation || false,
+                        useAutoprompt: options?.exa?.useAutoprompt || false,
+                        type: options?.exa?.type || "keyword",
                         text: {
-                            maxCharacters: options?.maxCharacters || 1000
+                            maxCharacters: options?.exa?.maxCharacters || 1000
                         },
-                        numResults: options?.exaLimit || 3
+                        contents: {
+                            summary: {
+                                query: "Summarize the content considering the query was " + query
+                            }
+                        },
+                        numResults: options?.exa?.limit || 3
                     }
                 );
                 elizaLogger.debug(`Exa search completed for: "${query}"`);
                 return result;
+            }) as any;
+            response.results.forEach(r => {
+                r.text = r.summary ? r.summary : r.text;
             });
-
-            return {
-                ...response,
-                provider: SearchProvider.EXA
-            };
+            response.provider = SearchProvider.EXA;
+            return response;
         } catch (error) {
             elizaLogger.error(`Exa search error for "${query}":`, error);
             throw error;
@@ -311,11 +326,11 @@ export class SerperProvider implements ISearchProvider {
                     headers: myHeaders,
                     body: JSON.stringify({
                         q: query,
-                        gl: options?.gl || "us",
-                        hl: options?.hl || "en",
-                        autocorrect: options?.autocorrect !== undefined ? options.autocorrect : true,
-                        page: options?.page || 1,
-                        type: options?.type || "search"
+                        gl: options?.serper?.gl || "us",
+                        hl: options?.serper?.hl || "en",
+                        autocorrect: options?.serper?.autocorrect == undefined ? false : options?.serper?.autocorrect,
+                        page: options?.serper?.page || 1,
+                        num: options?.serper?.num || 10
                     })
                 };
 
@@ -420,15 +435,6 @@ export class WebSearchService extends Service {
                 this.providers.set(SearchProvider.SERPER, serperProvider);
             }
         }
-
-        // For backward compatibility
-        this.tavilyClient = this.providers.has(SearchProvider.TAVILY)
-            ? (this.providers.get(SearchProvider.TAVILY) as TavilyProvider).client
-            : null;
-
-        this.exaClient = this.providers.has(SearchProvider.EXA)
-            ? (this.providers.get(SearchProvider.EXA) as ExaProvider).client
-            : null;
     }
 
     getInstance() {
@@ -449,73 +455,78 @@ export class WebSearchService extends Service {
         }
     }
 
-    // For backward compatibility
-    public tavilyClient: TavilyClient;
-    public exaClient: ExaClient | null = null;
-
     async search(
         query: string,
         options?: any,
     ): Promise<any> {
         // Determine which search provider to use
-        const provider = options?.provider || SearchProvider.BOTH;
+        const provider = options?.provider || SearchProvider.ALL;
         elizaLogger.debug(`Search request with provider: ${provider} for query: "${query}"`);
-
-        try {
-            // If a specific provider is requested
-            if (provider !== SearchProvider.BOTH) {
-                if (this.providers.has(provider)) {
-                    return await this.providers.get(provider).search(query, options);
-                } else {
-                    throw new Error(`Requested search provider '${provider}' is not available`);
-                }
-            }
-
-            // If BOTH is requested, try all available providers
-            const results = {};
-            const combinedResults = [];
-            let availableProviders = 0;
-            const usedProviders = [];
-
-            for (const [name, providerInstance] of this.providers.entries()) {
+        
+        // If a specific provider is requested
+        if (provider !== SearchProvider.ALL) {
+            if (this.providers.has(provider)) {
                 try {
-                    const providerResult = await providerInstance.search(query, options);
-                    results[name] = providerResult;
-                    availableProviders++;
-                    usedProviders.push(name);
-
-                    // Add to combined results
-                    if (providerResult.results) {
-                        const formattedResults = providerResult.results.map(result => ({
-                            ...result,
-                            title: result.title,
-                            url: result.url,
-                            content: result.text || result.content,
-                            score: result.relevance_score || result.score,
-                            source: name
-                        }));
-                        combinedResults.push(...formattedResults);
-                    }
+                    return await this.providers.get(provider).search(query, options);
                 } catch (error) {
-                    elizaLogger.error(`Error with provider ${name}:`, error);
+                    elizaLogger.error(`Error with provider ${provider}:`, error);
+                    throw error;
+                }
+            } else {
+                throw new Error(`Requested search provider '${provider}' is not available`);
+            }
+        }
+
+            // If ALL is requested, try all available providers
+        const results = {};
+        const combinedResults = [];
+        let availableProviders = 0;
+        const usedProviders = [];
+
+        const names = [];
+        const promises = [];
+        for (const [name, providerInstance] of this.providers.entries()) {
+            names.push(name);
+            promises.push(providerInstance.search(query, options));
+        }
+        const providerResults = await Promise.allSettled(promises);
+
+        let i = 0;
+        for (const providerResult of providerResults) {
+            const name = names[i++];
+            
+            if (providerResult.status === "fulfilled") {
+                results[name] = providerResult.value;
+                availableProviders++;
+                usedProviders.push(name);
+            } else {
+                elizaLogger.error(`Error with provider ${name}:`, providerResult.reason);
+                continue;
+            }
+
+            if (results[name].results) {
+                for (const result of results[name].results) {
+                    combinedResults.push({
+                        ...result,
+                        content: result.text || result.content,
+                        score: result.relevance_score || result.score,
+                        source: name
+                    });
                 }
             }
-
-            if (availableProviders === 0) {
-                throw new Error("No search providers are available");
-            }
-
-            // Return combined results with list of used providers
-            return {
-                ...results,
-                provider: SearchProvider.BOTH,
-                usedProviders: usedProviders,
-                combinedResults
-            };
-        } catch (error) {
-            elizaLogger.error(`Web search error for "${query}":`, error);
-            throw error;
         }
+
+        if (availableProviders === 0) {
+            throw new Error("No search providers are available");
+        }
+
+        // Return combined results with list of used providers
+        return {
+            ...results,
+            provider: SearchProvider.ALL,
+            usedProviders: usedProviders,
+            combinedResults
+        };
     }
 
     // Dedicated method for Tavily search

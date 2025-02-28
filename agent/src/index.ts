@@ -29,7 +29,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import yargs from "yargs";
 
-import TavilyService from "../service/tavily.ts";
+import WebSearchService from "../service/search.ts";
 import RemoveAttestationService from "../service/tee.ts";
 
 const __filename = fileURLToPath(import.meta.url); // get the resolved path to the file
@@ -621,7 +621,7 @@ export async function createAgent(
         managers: [],
         fetch: logFetch,
         services: [
-            new TavilyService(),
+            new WebSearchService(),
             new RemoveAttestationService(),
         ],
         // verifiableInferenceAdapter,
