@@ -115,7 +115,7 @@ export const models: Models = {
             [ModelClass.LARGE]: {
                 name:
                     settings.LARGE_ANTHROPIC_MODEL ||
-                    "claude-3-5-sonnet-20241022",
+                    "claude-3-7-sonnet-20250219",
                 stop: [],
                 maxInputTokens: 200000,
                 maxOutputTokens: 4096,
