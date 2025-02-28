@@ -3,7 +3,7 @@
 import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Loader2, CheckCircle, XCircle, CircleHelp } from "lucide-react"
+import { Loader2, CheckCircle, XCircle, CircleHelp, Clock } from "lucide-react"
 import TruthOrb from "./truth-orb"
 import axios from "axios"
 import LogDisplay from './components/LogDisplay'
@@ -16,6 +16,7 @@ const color = {
   false: "bg-red-400",
   depends: "bg-yellow-400",
   inconclusive: "bg-gray-400",
+  too_early: "bg-blue-400",
 }
 
 const bgColor = {
@@ -23,6 +24,7 @@ const bgColor = {
   false: "bg-red-500",
   depends: "bg-yellow-500",
   inconclusive: "bg-gray-500",
+  too_early: "bg-blue-500",
 }
 
 const circle = {
@@ -30,13 +32,14 @@ const circle = {
   false: <XCircle className="h-12 w-12 text-red-500" />,
   depends: <CheckCircle className="h-12 w-12 text-yellow-500" />,
   inconclusive: <CircleHelp className="h-12 w-12 text-gray-500" />,
+  too_early: <Clock className="h-12 w-12 text-blue-500" />,
 }
 
 export default function ClaimVerifier() {
   const [claim, setClaim] = useState("")
   const [isVerifying, setIsVerifying] = useState(false)
   const [result, setResult] = useState<null | {
-    decision: "true" | "false" | "depends" | "inconclusive"
+    decision: "true" | "false" | "depends" | "inconclusive" | "too_early"
     confidence: number
     reason: string
   }>(null)

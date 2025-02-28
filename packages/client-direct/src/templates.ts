@@ -96,12 +96,14 @@ As {{agentName}} on the ${team} team, you initially approached this claim assumi
 4. Consider ALTERNATIVE interpretations of the evidence
 5. Determine if the claim is SPECIFIC enough to be verified
 6. Be willing to CHANGE your initial assumption based on evidence
+7. Check if the claim references a FUTURE DATE or event that hasn't occurred yet
 
 # Decision Criteria (Apply Strictly)
 "True" - The claim is DEMONSTRABLY true based on high-quality evidence with minimal credible contradicting evidence.
 "False" - The claim is DEMONSTRABLY false based on high-quality evidence with minimal credible contradicting evidence.
 "Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim.
 "Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
+"Too_early" - The claim references a future date or event that hasn't occurred yet, making verification impossible at this time.
 
 # Your Query Results
 {{queryResults}}
@@ -170,12 +172,14 @@ Your task is to synthesize their findings and make a final, objective determinat
 4. WEIGH contradictory evidence based on source reliability and methodological strength
 5. CONSIDER what information might still be missing from both analyses
 6. DETERMINE if either team overlooked important context or nuance
+7. CHECK if the claim references a future date or event that hasn't occurred yet
 
 # Decision Criteria (Apply Rigorously)
 "True" - The claim is DEMONSTRABLY true based on preponderance of high-quality evidence with minimal credible contradicting evidence.
 "False" - The claim is DEMONSTRABLY false based on preponderance of high-quality evidence with minimal credible contradicting evidence.
 "Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim.
 "Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
+"Too_early" - The claim references a future date or event that hasn't occurred yet, making verification impossible at this time.
 
 # Blue Team (Pro-Claim)
 ## Evidence Gathered
@@ -197,7 +201,7 @@ Reasoning: ${redTeamDecision.reason}
 Your response must be a JSON object with the following structure:
 
 {
-  "decision": "true|false|depends|inconclusive",
+  "decision": "true|false|depends|inconclusive|too_early",
   "reason": "Your detailed reasoning process...",
   "confidence": 0-100,
   "strongest_evidence_for": [
@@ -220,5 +224,6 @@ Notes:
 - Medium confidence (50-79) for good evidence with some limitations or contradictions
 - Low confidence (0-49) for limited, poor quality, or highly contradictory evidence
 - Be specific about which evidence points were most influential in your decision
+- If the claim references a future date or event that hasn't occurred yet, use the "too_early" decision
 `;
 }
