@@ -14,7 +14,7 @@ export default function LogDisplay({ logs = [], autoScroll = true, showLineNumbe
 
   // Auto-scroll to bottom when logs change
   useEffect(() => {
-    if (autoScroll && logEndRef.current) {
+    if (autoScroll && logEndRef.current && logs.length > 0 && !logs[logs.length - 1].endsWith("Claim verification completed successfully")) {
       logEndRef.current.scrollIntoView({ behavior: "smooth" })
     }
   }, [autoScroll, logs])

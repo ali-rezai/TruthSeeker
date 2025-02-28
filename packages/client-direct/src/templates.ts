@@ -67,11 +67,14 @@ As {{agentName}} you belived that the claim was ${assumption} but you needed to 
 You have now received the results of the queries so using the data you have gathered, now you are tasked with thinking, being critical and reasoning about the claim to make a final decision.
 If you need to change your mind on the claim's truthfulness, it's ok to do so.
 
-Care about the smallest of details both in the claims and in the information you have gathered.
-If your decision would change depending on something that is not provided in the claim but is key to your decision, use "depends" as your decision.
-Do not rely on "implied" data in the claim. If something is missing from the claim, it is missing do not make assumptions.
+# Decision Criteria
+"True" - The claim is UNDENIABLY true based on information gathered and there is little to no counter evidence.
+"False" - The claim is UNDENIABLY false based on information gathered and there is little to no counter evidence.
+"Depends" - The claim lacks some information or additional context that would greatly influence whether you'd choose true or false.
+"Inconclusive" - There is not enough information to make a decision or there is data both for and against the claim and a reasonable person could choose either true or false or both.
 
-If there is not enough information to make a decision or there is data both for and against the claim which wouldn't change your decision no matter what context is added to the claim, use "inconclusive" as your decision.
+Care about the smallest of details both in the claim and in the information you have gathered.
+Do not rely on what the claim implies. Only rely on EXPLICITLY stated information in the claim. If some context is missing from the claim, do not make assumptions.
 
 # Your Query Results
 {{queryResults}}
@@ -111,11 +114,14 @@ The Blue team went to query data assuming the claim was true and then made a dec
 The Red team went to query data assuming the claim was false and then made a decision based on the information they gathered.
 Your job is to take the results from both teams and make a final decision.
 
-Care about the smallest of details both in the claims and in the information you have gathered.
-If your decision would change depending on something that is not provided in the claim but is key to your decision, use "depends" as your decision.
-Do not rely on "implied" data in the claim. If something is missing from the claim, it is missing do not make assumptions.
+# Decision Criteria
+"True" - The claim is UNDENIABLY true based on information gathered and there is little to no counter evidence.
+"False" - The claim is UNDENIABLY false based on information gathered and there is little to no counter evidence.
+"Depends" - The claim lacks some information or additional context that would greatly influence whether you'd choose true or false.
+"Inconclusive" - There is not enough information to make a decision or there is data both for and against the claim and a reasonable person could choose either true or false or both.
 
-If there is not enough information to make a decision or there is data both for and against the claim which wouldn't change your decision no matter what context is added to the claim, use "inconclusive" as your decision.
+Care about the smallest of details both in the claim and in the information you have gathered.
+Do not rely on what the claim implies. Only rely on EXPLICITLY stated information in the claim. If some context is missing from the claim, do not make assumptions.
 
 # Blue Team
 ## Queries and Information Gathered
