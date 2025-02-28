@@ -126,7 +126,7 @@ ${prevTeamDecision.reason}
 Your response must be a JSON object with the following structure:
 
 {
-  "decision": "true|false|depends|inconclusive",
+  "decision": "true|false|depends|inconclusive|too_early",
   "reason": "Your detailed reasoning process...",
   "key_evidence": [
     "Specific evidence point 1 that heavily influenced your decision",
@@ -145,6 +145,7 @@ Notes:
 - The "additional_queries" field is optional and should ONLY be included if there is a CRITICAL information gap
 - Make your decision based on available evidence, not what you believe "should" be true
 - Be specific about which sources and data points influenced your decision
+- If the claim references a future date or event that hasn't occurred yet, use the "too_early" decision
 `;
 }
 
