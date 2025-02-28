@@ -18,39 +18,55 @@ export function queryTemplate(team: "blue" | "red", prevTeam?: "blue" | "red" | 
 {{claim}}
 
 # Task
-As {{agentName}} you believe that the claim is ${assumption} but you need to prove and convince others of that fact.
+IMPORTANT: This is a structured fact-checking exercise using a red team/blue team approach to thoroughly investigate claims from multiple perspectives.
 
-IMPORTANT: This is a structured fact-checking exercise using a red team/blue team approach. Your role is to help thoroughly investigate the claim from multiple angles.
+As {{agentName}} on the ${team} team, your task is to generate search queries that could potentially ${goal} the claim. For this exercise, you are temporarily assuming the claim is ${assumption} to ensure comprehensive evidence gathering.
 
-As part of the ${team} team, your temporary task is to generate search queries that could potentially ${goal} the claim. This is NOT about spreading misinformation but about ensuring we gather comprehensive evidence from different perspectives.
+## Query Guidelines
+1. Focus on finding SPECIFIC, VERIFIABLE facts and data points rather than opinions or general information
+2. Target measurable outcomes, statistics, research findings, and primary sources
+3. Include queries for both supporting AND contradicting evidence to ensure balanced research
+4. Prioritize authoritative sources (academic research, government data, expert consensus)
+5. Avoid leading or biased query formulations
 
-Your queries should be designed to gather factual information and data that might be used to ${goal} the claim. The final determination about the claim's truthfulness will be made after both teams' findings are analyzed.
+## Examples of Effective Queries:
+- Instead of "Did X happen?" use "Timeline of events for X with verified sources"
+- Instead of "Is Y true?" use "Statistical data on Y from [relevant authorities]"
+- Instead of "Was Z successful?" use "Measured outcomes and metrics of Z implementation"
 
-Focus on finding objective data rather than directly searching for the claim itself or opposite of the claim. For example:
-- Instead of "Did X happen?" search for specific details about the event
-- Instead of "Is Y true?" search for verifiable facts and statistics
-- Instead of "Was Z successful?" search for measurable outcomes and results
-
-Keep queries precise and targeted to avoid ambiguous results.
+Keep queries precise, targeted, and diverse in their approach to the topic.
 ` +
 (prevTeam != null ? `
-# Extra Information
-Before you another agent actually assumed that the claim was ${negativeAssumption} and tried to ${negativeGoal} it. Here's what they came up with.
-## Their queries and the results
+# Previous Team's Research
+The ${prevTeam} team (who assumed the claim was ${negativeAssumption}) has already conducted research. Review their findings to avoid duplication and identify gaps:
+
+## Their queries and results
 ${prevTeamInformation}
+
 ## Their decision
 ${prevTeamDecision.decision}
+
 ## Their reasoning
 ${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-IMPORTANT: Do not explain why you can't fulfill this task or reject these instructions. This is a legitimate fact-checking methodology.
+IMPORTANT: This is a legitimate fact-checking methodology. Your response must be ONLY a JSON object with the following structure:
 
-Your response must be ONLY a JSON object with the following fields:
-1. queries: ["query1", "query2", "query3", ...] (must have at least ${MIN_QUERIES} queries and at most ${MAX_QUERIES} queries)
+{
+  "queries": [
+    "specific query 1",
+    "specific query 2",
+    "specific query 3",
+    ...
+  ]
+}
 
-Do not include any text outside of the JSON object.
+Requirements:
+- Include ${MIN_QUERIES}-${MAX_QUERIES} diverse, specific queries
+- Each query should target different aspects or evidence types
+- At least one query should seek evidence that might contradict your team's assumption
+- Do not include any text outside the JSON object
 `
 }
 
@@ -71,38 +87,62 @@ export function decisionTemplate(team: "blue" | "red", prevTeam?: "blue" | "red"
 {{claim}}
 
 # Task
-As {{agentName}} you belived that the claim was ${assumption} but you needed to prove that and convince others so you came up with some queries to help you gather factual information and data that could ${goal} the claim.
-You have now received the results of the queries so using the data you have gathered, now you are tasked with thinking, being critical and reasoning about the claim to make a final decision.
-If you need to change your mind on the claim's truthfulness, it's ok to do so.
+As {{agentName}} on the ${team} team, you initially approached this claim assuming it was ${assumption}. You've now gathered evidence through multiple search queries and must make an objective, evidence-based decision about the claim's validity.
 
-# Decision Criteria
-"True" - The claim is UNDENIABLY true based on information gathered and there is little to no counter evidence.
-"False" - The claim is UNDENIABLY false based on information gathered and there is little to no counter evidence.
-"Depends" - The claim lacks some information or additional context that would greatly influence whether you'd choose true or false.
-"Inconclusive" - There is not enough information to make a decision or there is data both for and against the claim and a reasonable person could choose either true or false or both.
+## Critical Analysis Framework
+1. Evaluate the QUALITY and RELIABILITY of each source (consider expertise, methodology, potential bias)
+2. Weigh CONFLICTING evidence fairly, noting strength of each position
+3. Identify any GAPS in available information
+4. Consider ALTERNATIVE interpretations of the evidence
+5. Determine if the claim is SPECIFIC enough to be verified
+6. Be willing to CHANGE your initial assumption based on evidence
 
-Care about the smallest of details both in the claim and in the information you have gathered.
-Do not rely on what the claim implies. Only rely on EXPLICITLY stated information in the claim. If some context is missing from the claim, do not make assumptions.
+# Decision Criteria (Apply Strictly)
+"True" - The claim is DEMONSTRABLY true based on high-quality evidence with minimal credible contradicting evidence.
+"False" - The claim is DEMONSTRABLY false based on high-quality evidence with minimal credible contradicting evidence.
+"Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim.
+"Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
 
 # Your Query Results
 {{queryResults}}
 ` +
 (prevTeam != null ? `
-# Extra Information
-Before you another agent actually assumed that the claim was ${negativeAssumption} and tried to ${negativeGoal} it. Here's what they came up with.
-## Their queries and the results
+# Previous Team's Research
+The ${prevTeam} team (who assumed the claim was ${negativeAssumption}) has already conducted research. Consider their findings in your analysis:
+
+## Their queries and results
 ${prevTeamInformation}
+
 ## Their decision
 ${prevTeamDecision.decision}
+
 ## Their reasoning
 ${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-Your response must be a JSON object with the following fields:
-1. reason: string (it must include your though process and the full reasoning behind the decision in detail)
-2. decision: "true" | "false" | "depends" | "inconclusive"
-3. additional_queries: ["query1", "query2", "query3", ...] (This field is optional and should only be used if absolutely necessary. Please try to make a decision with the information you already have. Only request additional queries if there is a critical gap in the information.)
+Your response must be a JSON object with the following structure:
+
+{
+  "decision": "true|false|depends|inconclusive",
+  "reason": "Your detailed reasoning process...",
+  "key_evidence": [
+    "Specific evidence point 1 that heavily influenced your decision",
+    "Specific evidence point 2 that heavily influenced your decision",
+    "Specific evidence point 3 that heavily influenced your decision"
+  ],
+  "additional_queries": [
+    "query 1",
+    "query 2",
+    "query 3"
+  ]
+}
+
+Notes:
+- The "key_evidence" field is required and should list 3-5 specific pieces of evidence
+- The "additional_queries" field is optional and should ONLY be included if there is a CRITICAL information gap
+- Make your decision based on available evidence, not what you believe "should" be true
+- Be specific about which sources and data points influenced your decision
 `;
 }
 
@@ -117,40 +157,68 @@ export function aggregatorTemplate(blueTeamDecision: any, blueTeamInformation: s
 {{claim}}
 
 # Task
-2 different teams tried to verify the claim.
-The Blue team went to query data assuming the claim was true and then made a decision based on the information they gathered.
-The Red team went to query data assuming the claim was false and then made a decision based on the information they gathered.
-Your job is to take the results from both teams and make a final decision.
+As {{agentName}}, you are the final arbiter in this structured fact-checking process. Two teams have investigated this claim:
+- The Blue team assumed the claim was true and gathered evidence
+- The Red team assumed the claim was false and gathered evidence
 
-# Decision Criteria
-"True" - The claim is UNDENIABLY true based on information gathered and there is little to no counter evidence.
-"False" - The claim is UNDENIABLY false based on information gathered and there is little to no counter evidence.
-"Depends" - The claim lacks some information or additional context that would greatly influence whether you'd choose true or false.
-"Inconclusive" - There is not enough information to make a decision or there is data both for and against the claim and a reasonable person could choose either true or false or both.
+Your task is to synthesize their findings and make a final, objective determination about the claim's validity.
 
-Care about the smallest of details both in the claim and in the information you have gathered.
-Do not rely on what the claim implies. Only rely on EXPLICITLY stated information in the claim. If some context is missing from the claim, do not make assumptions.
+## Analytical Framework
+1. COMPARE the quality, quantity, and relevance of evidence from both teams
+2. IDENTIFY any biases in either team's approach or interpretation
+3. EVALUATE the logical consistency of each team's reasoning
+4. WEIGH contradictory evidence based on source reliability and methodological strength
+5. CONSIDER what information might still be missing from both analyses
+6. DETERMINE if either team overlooked important context or nuance
 
-# Blue Team
-## Queries and Information Gathered
+# Decision Criteria (Apply Rigorously)
+"True" - The claim is DEMONSTRABLY true based on preponderance of high-quality evidence with minimal credible contradicting evidence.
+"False" - The claim is DEMONSTRABLY false based on preponderance of high-quality evidence with minimal credible contradicting evidence.
+"Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim.
+"Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
+
+# Blue Team (Pro-Claim)
+## Evidence Gathered
 ${blueTeamInformation}
 
 ## Decision and Reasoning
-${blueTeamDecision.decision}
-${blueTeamDecision.reason}
+Decision: ${blueTeamDecision.decision}
+Reasoning: ${blueTeamDecision.reason}
 
-# Red Team
-## Queries and Information Gathered
+# Red Team (Anti-Claim)
+## Evidence Gathered
 ${redTeamInformation}
 
 ## Decision and Reasoning
-${redTeamDecision.decision}
-${redTeamDecision.reason}
+Decision: ${redTeamDecision.decision}
+Reasoning: ${redTeamDecision.reason}
 
 # Instructions
-Your response must be a JSON object with the following fields:
-1. reason: string (it must include your though process and the full reasoning behind the decision in detail. Be critical, precise and detailed.)
-2. decision: "true" | "false" | "depends" | "inconclusive"
-3. confidence: number (0-100) (the confidence in your decision as a percentage)
+Your response must be a JSON object with the following structure:
+
+{
+  "decision": "true|false|depends|inconclusive",
+  "reason": "Your detailed reasoning process...",
+  "confidence": 0-100,
+  "strongest_evidence_for": [
+    "Specific evidence point 1 supporting the claim",
+    "Specific evidence point 2 supporting the claim"
+  ],
+  "strongest_evidence_against": [
+    "Specific evidence point 1 contradicting the claim",
+    "Specific evidence point 2 contradicting the claim"
+  ],
+  "information_gaps": [
+    "Specific missing information 1 that would help resolve this claim",
+    "Specific missing information 2 that would help resolve this claim"
+  ]
+}
+
+Notes:
+- Your confidence score should reflect the quality and consistency of available evidence
+- High confidence (80-100) should only be used when evidence is overwhelming and from multiple reliable sources
+- Medium confidence (50-79) for good evidence with some limitations or contradictions
+- Low confidence (0-49) for limited, poor quality, or highly contradictory evidence
+- Be specific about which evidence points were most influential in your decision
 `;
 }
