@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+import "./OperatorRegistry.sol";
+
 /**
  * @title TaskRegistry
  * @dev A contract for registering tasks with claims that need verification
  */
 contract TaskRegistry {
+    OperatorRegistry public operatorRegistry;
+
     // Enum for claim verification result
     enum ClaimVerificationResult {
         PENDING,
@@ -38,7 +42,8 @@ contract TaskRegistry {
      * @dev Constructor sets the submission fee and owner
      * @param _submissionFee The fee required to submit a task
      */
-    constructor(uint256 _submissionFee) {
+    constructor(uint256 _submissionFee, address _operatorRegistry) {
+        operatorRegistry = OperatorRegistry(_operatorRegistry);
         submissionFee = _submissionFee;
         taskCount = 0;
     }
@@ -83,14 +88,18 @@ contract TaskRegistry {
      * @param _taskId The ID of the task to verify
      * @param _verificationResult The result of the claim verification
      */
-    function submitVerificationResult(uint256 _taskId, ClaimVerificationResult _verificationResult) external {
+    function submitVerificationResult(uint256 _taskId, ClaimVerificationResult _verificationResult, bytes calldata _teeRaQuote) external {
         require(_taskId < taskCount, "TaskRegistry: task does not exist");
         require(tasks[_taskId].verificationResult == ClaimVerificationResult.PENDING, "TaskRegistry: task already verified");
         require(_verificationResult != ClaimVerificationResult.PENDING, "TaskRegistry: verification result cannot be PENDING");
-
-        // TODO: Verify TEE Quote
+        
+        // TODO: Verify TEE RA Quote based on OperatorRegistryStorage constants and the rtmr3 in msg.sender's operator info
 
         tasks[_taskId].verificationResult = _verificationResult;
+        
+        (bool success, ) = msg.sender.call{value: submissionFee}("");
+        require(success, "TaskRegistry: payment failed");
+        
         emit TaskUpdated(_taskId, _verificationResult);
     }
 }

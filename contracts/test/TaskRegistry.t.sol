@@ -21,7 +21,8 @@ contract TaskRegistryTest is Test {
         vm.deal(user2, 1 ether);
         
         // Deploy contract
-        taskRegistry = new TaskRegistry(submissionFee);
+        OperatorRegistry operatorRegistry = new OperatorRegistry(0.1 ether);
+        taskRegistry = new TaskRegistry(submissionFee, address(operatorRegistry));
     }
 
     function testSubmitTask() public {
@@ -56,7 +57,7 @@ contract TaskRegistryTest is Test {
         taskRegistry.submitTask{value: submissionFee}(claim);
         
         // Verify the task as true
-        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.TRUE);
+        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.TRUE, bytes(""));
         
         // Check task was verified correctly
         (,, TaskRegistry.ClaimVerificationResult verificationResult) = taskRegistry.getTask(0);
@@ -70,11 +71,11 @@ contract TaskRegistryTest is Test {
         taskRegistry.submitTask{value: submissionFee}(claim);
         
         // Verify the task first time
-        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.TRUE);
+        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.TRUE, bytes(""));
         
         // Try to verify again
         vm.expectRevert("TaskRegistry: task already verified");
-        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.FALSE);
+        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.FALSE, bytes(""));
     }
 
     function testVerifyTaskInvalidResult() public {
@@ -85,7 +86,7 @@ contract TaskRegistryTest is Test {
         
         // Try to verify with PENDING result
         vm.expectRevert("TaskRegistry: verification result cannot be PENDING");
-        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.PENDING);
+        taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.PENDING, bytes(""));
     }
 
     function testGetNonExistentTask() public {

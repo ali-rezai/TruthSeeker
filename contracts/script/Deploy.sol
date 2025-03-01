@@ -10,7 +10,8 @@ contract DeployTaskRegistry is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // Deploy with a submission fee of 0.01 ether
-        TaskRegistry taskRegistry = new TaskRegistry(0.01 ether);
+        OperatorRegistry operatorRegistry = new OperatorRegistry(0.1 ether);
+        TaskRegistry taskRegistry = new TaskRegistry(0.01 ether, address(operatorRegistry));
         
         vm.stopBroadcast();
 
