@@ -4,19 +4,41 @@ pragma solidity ^0.8.20;
 import "forge-std/Test.sol";
 import "../src/OperatorRegistry.sol";
 import "../src/OperatorRegistryStorage.sol";
+import "@automata-network/dcap-attestation/verifiers/V4QuoteVerifier.sol";
+import "automata-dcap-attestation/forge-test/utils/PCCSSetupBase.sol";
 
-contract OperatorRegistryHistoryTest is Test {
+contract OperatorRegistryHistoryTest is PCCSSetupBase {
     OperatorRegistry public operatorRegistry;
+    AutomataDcapAttestation public automataDcapAttestation;
     address public owner;
     address public operator1;
     address public operator2;
     address public operator3;
     uint256 public registrationFee = 0.1 ether;
-    
-    // Sample TEE RA quote (just a placeholder for testing)
-    bytes public sampleTeeRaQuote = hex"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    bytes public sampleQuote = vm.readFileBinary(string.concat(vm.projectRoot(), "/test/assets/quote.bin"));
 
-    function setUp() public {
+    function setUp() public override {
+        super.setUp();
+        vm.startPrank(admin);
+
+        // PCCS Setup
+        PCCSRouter pccsRouter = setupPccsRouter();
+        pcsDaoUpserts();
+        
+        // collateral upserts
+        vm.warp(1740947347);
+        string memory tcbInfoPath = "/test/assets/tcbinfo.json";
+        string memory qeIdPath = "/test/assets/identity.json";
+        qeIdDaoUpsert(4, qeIdPath);
+        fmspcTcbDaoUpsert(tcbInfoPath);
+
+        automataDcapAttestation = new AutomataDcapAttestation(0x0000000000000000000000000000000000000000, bytes32(0));
+
+        V4QuoteVerifier v4QuoteVerifier = new V4QuoteVerifier(address(pccsRouter));
+        automataDcapAttestation.setQuoteVerifier(address(v4QuoteVerifier));
+        
+        vm.stopPrank();
+
         owner = address(this);
         operator1 = makeAddr("operator1");
         operator2 = makeAddr("operator2");
@@ -28,13 +50,13 @@ contract OperatorRegistryHistoryTest is Test {
         vm.deal(operator3, 1 ether);
         
         // Deploy contract
-        operatorRegistry = new OperatorRegistry(registrationFee);
+        operatorRegistry = new OperatorRegistry(registrationFee, address(automataDcapAttestation));
     }
 
     function testOperatorIndexHistory() public {
         // Register operator1 at block 1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         uint256 block1 = block.number;
         
@@ -43,7 +65,7 @@ contract OperatorRegistryHistoryTest is Test {
         
         // Register operator2 at block 2
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         uint256 block2 = block.number;
         
@@ -61,7 +83,7 @@ contract OperatorRegistryHistoryTest is Test {
         
         // Register operator3 at block 4
         vm.prank(operator3);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         uint256 block4 = block.number;
         
@@ -81,7 +103,7 @@ contract OperatorRegistryHistoryTest is Test {
     function testOperatorListAtBlockNumber() public {
         // Register operator1 at block 1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         uint256 block1 = block.number;
         
@@ -90,7 +112,7 @@ contract OperatorRegistryHistoryTest is Test {
         
         // Register operator2 at block 2
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         uint256 block2 = block.number;
         
@@ -117,4 +139,4 @@ contract OperatorRegistryHistoryTest is Test {
         assertEq(operatorsAtBlock3.length, 1, "Should be 1 operator at block3");
         assertEq(operatorsAtBlock3[0], operator2, "Operator2 should be in list at block3");
     }
-} 
+}

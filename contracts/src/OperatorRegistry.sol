@@ -13,7 +13,7 @@ contract OperatorRegistry is OperatorRegistryStorage {
      * @dev Constructor
      * @param _registrationFee The fee required to register as an operator
      */
-    constructor(uint256 _registrationFee) OperatorRegistryStorage(_registrationFee) {}
+    constructor(uint256 _registrationFee, address _automataDcapAttestation) OperatorRegistryStorage(_registrationFee, _automataDcapAttestation) {}
 
     /**
      * @dev Register as an operator with a TEE RA quote
@@ -25,13 +25,23 @@ contract OperatorRegistry is OperatorRegistryStorage {
         require(msg.value >= registrationFee, "Insufficient ETH sent");
 
         // Verify TEE RA quote
-        // Verify compose hash digest (will need ZKP as there will be private data in there along with the docker compose)
+        (bool success, bytes memory output) = automataDcapAttestation.verifyAndAttestOnChain(teeRaQuote);
+        if (!success) {
+            revert(string(output));
+        }
+
+        // TODO: Verify compose hash digest (will need ZKP as there will be private data in there along with the docker compose)
         // Calculate Expected RTMR3 based on data in OperatorRegistryStorage, composeHashDigest and instanceIdDigest
         // Extract MRTD, RTMR0, RTMR1, RTMR2, RTMR3 from TEE RA Quote
         // MRTD, RTMR0, RTMR1, RTMR2 should match the constants in OperatorRegistryStorage
         // RTMR3 should match the expected RTMR3
         // If any of these checks fail, revert
-        bytes32 rtmr3 = 0x0000000000000000000000000000000000000000000000000000000000000000;
+
+        bytes memory rtmr3Bytes = new bytes(48);
+        for (uint256 i = 520; i < 568; i++) {
+            rtmr3Bytes[i - 520] = teeRaQuote[i];
+        }
+        bytes32 rtmr3 = keccak256(rtmr3Bytes);
 
         // Register the operator
         operators[msg.sender] = OperatorInfo({
@@ -45,6 +55,15 @@ contract OperatorRegistry is OperatorRegistryStorage {
         _assignOperatorToIndex(msg.sender, newOperatorCount - 1);
 
         emit OperatorRegistered(msg.sender, msg.value);
+    }
+
+    /**
+     * @dev Get the RTMR3 for an operator
+     * @param operator The address of the operator
+     * @return The RTMR3 for the operator
+     */
+    function getOpeartorRtmr3(address operator) external view returns (bytes32) {
+        return operators[operator].rtmr3;
     }
     
     /**

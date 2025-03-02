@@ -3,38 +3,60 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "../src/OperatorRegistry.sol";
+import "@automata-network/dcap-attestation/verifiers/V4QuoteVerifier.sol";
+import "automata-dcap-attestation/forge-test/utils/PCCSSetupBase.sol";
 
-contract OperatorRegistryTest is Test {
+contract OperatorRegistryTest is PCCSSetupBase {
     OperatorRegistry public operatorRegistry;
+    AutomataDcapAttestation public automataDcapAttestation;
     address public owner;
     address public operator1;
     address public operator2;
     uint256 public registrationFee = 0.1 ether;
-    
-    // Sample TEE RA quote (just a placeholder for testing)
-    bytes public sampleTeeRaQuote = hex"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    bytes public sampleQuote = vm.readFileBinary(string.concat(vm.projectRoot(), "/test/assets/quote.bin"));
 
-    function setUp() public {
+    function setUp() public override {
+        super.setUp();
+        vm.startPrank(admin);
+
+        // PCCS Setup
+        PCCSRouter pccsRouter = setupPccsRouter();
+        pcsDaoUpserts();
+        
+        // collateral upserts
+        vm.warp(1740947347);
+        string memory tcbInfoPath = "/test/assets/tcbinfo.json";
+        string memory qeIdPath = "/test/assets/identity.json";
+        qeIdDaoUpsert(4, qeIdPath);
+        fmspcTcbDaoUpsert(tcbInfoPath);
+
+        automataDcapAttestation = new AutomataDcapAttestation(0x0000000000000000000000000000000000000000, bytes32(0));
+
+        V4QuoteVerifier v4QuoteVerifier = new V4QuoteVerifier(address(pccsRouter));
+        automataDcapAttestation.setQuoteVerifier(address(v4QuoteVerifier));
+        
+        vm.stopPrank();
+        
         owner = address(this);
         operator1 = makeAddr("operator1");
         operator2 = makeAddr("operator2");
-        
+
         // Fund test operators
         vm.deal(operator1, 1 ether);
         vm.deal(operator2, 1 ether);
         
         // Deploy contract
-        operatorRegistry = new OperatorRegistry(registrationFee);
+        operatorRegistry = new OperatorRegistry(registrationFee, address(automataDcapAttestation));
     }
 
     function testRegisterOperator() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Check operator status
         (bytes32 rtmr3, uint256 stake, OperatorRegistry.OperatorStatus status) = operatorRegistry.operators(operator1);
-        assertEq(rtmr3, 0x0000000000000000000000000000000000000000000000000000000000000000, "Rtmr3 should be 0");
+        assertEq(rtmr3, 0x855cf0247ef3431a596a2ba90e649318c2888e6372986fd5675f878c1055db8c, "Rtmr3 should be 0x855c...db8c");
         assertEq(uint(status), uint(OperatorRegistryStorage.OperatorStatus.Registered), "Operator should be registered");
         assertEq(stake, registrationFee, "Stake should equal registration fee");
         
@@ -52,7 +74,7 @@ contract OperatorRegistryTest is Test {
         // Try to register with insufficient fee
         vm.prank(operator1);
         vm.expectRevert("Insufficient ETH sent");
-        operatorRegistry.registerOperator{value: registrationFee - 0.01 ether}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee - 0.01 ether}(sampleQuote, bytes(""), bytes(""));
     }
     
     function testRegisterOperatorEmptyQuote() public {
@@ -65,18 +87,18 @@ contract OperatorRegistryTest is Test {
     function testRegisterOperatorAlreadyRegistered() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Try to register again
         vm.prank(operator1);
         vm.expectRevert("Already registered");
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
     }
     
     function testDepositEth() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Deposit additional ETH
         uint256 additionalAmount = 0.5 ether;
@@ -98,7 +120,7 @@ contract OperatorRegistryTest is Test {
     function testDepositEthZeroAmount() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Try to deposit zero ETH
         vm.prank(operator1);
@@ -110,7 +132,7 @@ contract OperatorRegistryTest is Test {
         // Register operator1 with extra funds
         uint256 initialDeposit = registrationFee + 0.5 ether;
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: initialDeposit}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: initialDeposit}(sampleQuote, bytes(""), bytes(""));
         
         // Withdraw some ETH
         uint256 withdrawAmount = 0.2 ether;
@@ -129,7 +151,7 @@ contract OperatorRegistryTest is Test {
         // Register operator1 with extra funds
         uint256 initialDeposit = registrationFee + 0.05 ether;
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: initialDeposit}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: initialDeposit}(sampleQuote, bytes(""), bytes(""));
         
         // Withdraw amount that puts stake below registration fee
         uint256 withdrawAmount = 0.06 ether;
@@ -149,7 +171,7 @@ contract OperatorRegistryTest is Test {
     function testWithdrawEthInsufficientBalance() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Try to withdraw more than available
         vm.prank(operator1);
@@ -160,7 +182,7 @@ contract OperatorRegistryTest is Test {
     function testDeregisteredOperatorCannotDeposit() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Withdraw to become deregistered
         vm.prank(operator1);
@@ -181,10 +203,10 @@ contract OperatorRegistryTest is Test {
     function testGetActiveOperatorAt() public {
         // Register two operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Get operators by index
         address retrievedOperator0 = operatorRegistry.getActiveOperatorAt(0);
@@ -207,10 +229,10 @@ contract OperatorRegistryTest is Test {
     function testGetContractBalance() public {
         // Register two operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Check contract balance
         assertEq(operatorRegistry.getContractBalance(), 2 * registrationFee, "Contract balance should equal total deposits");
@@ -219,10 +241,10 @@ contract OperatorRegistryTest is Test {
     function testGetOperatorList() public {
         // Register two operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Get operator list
         address[] memory operators = operatorRegistry.getOperatorList();
@@ -241,15 +263,15 @@ contract OperatorRegistryTest is Test {
     function testDeregisterAndReindexOperators() public {
         // Register three operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         address operator3 = makeAddr("operator3");
         vm.deal(operator3, 1 ether);
         vm.prank(operator3);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleTeeRaQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
         
         // Deregister the middle operator (operator3)
         vm.prank(operator3);
@@ -266,4 +288,4 @@ contract OperatorRegistryTest is Test {
         uint32 operator2Index = operatorRegistry.currentOperatorIndex(operator2);
         assertTrue(operator2Index < 2, "Operator2 should have been moved to an earlier index");
     }
-} 
+}

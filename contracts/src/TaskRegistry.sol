@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./OperatorRegistry.sol";
+import "@automata-network/dcap-attestation/AutomataDcapAttestation.sol";
 
 /**
  * @title TaskRegistry
@@ -9,6 +10,7 @@ import "./OperatorRegistry.sol";
  */
 contract TaskRegistry {
     OperatorRegistry public operatorRegistry;
+    AutomataDcapAttestation public automataDcapAttestation;
 
     // Enum for claim verification result
     enum ClaimVerificationResult {
@@ -42,10 +44,11 @@ contract TaskRegistry {
      * @dev Constructor sets the submission fee and owner
      * @param _submissionFee The fee required to submit a task
      */
-    constructor(uint256 _submissionFee, address _operatorRegistry) {
+    constructor(uint256 _submissionFee, address _operatorRegistry, address _automataDcapAttestation) {
         operatorRegistry = OperatorRegistry(_operatorRegistry);
         submissionFee = _submissionFee;
         taskCount = 0;
+        automataDcapAttestation = AutomataDcapAttestation(_automataDcapAttestation);
     }
 
     /**
@@ -88,18 +91,35 @@ contract TaskRegistry {
      * @param _taskId The ID of the task to verify
      * @param _verificationResult The result of the claim verification
      */
-    function submitVerificationResult(uint256 _taskId, ClaimVerificationResult _verificationResult, bytes calldata _teeRaQuote) external {
+    function submitVerificationResult(uint256 _taskId, ClaimVerificationResult _verificationResult, bytes memory _teeRaQuote) external {
         require(_taskId < taskCount, "TaskRegistry: task does not exist");
         require(tasks[_taskId].verificationResult == ClaimVerificationResult.PENDING, "TaskRegistry: task already verified");
         require(_verificationResult != ClaimVerificationResult.PENDING, "TaskRegistry: verification result cannot be PENDING");
         
-        // TODO: Verify TEE RA Quote based on OperatorRegistryStorage constants and the rtmr3 in msg.sender's operator info
-
+        _verifyOperatorTeeRaQuote(_teeRaQuote, operatorRegistry.getOpeartorRtmr3(msg.sender));
         tasks[_taskId].verificationResult = _verificationResult;
-        
+
         (bool success, ) = msg.sender.call{value: submissionFee}("");
         require(success, "TaskRegistry: payment failed");
         
         emit TaskUpdated(_taskId, _verificationResult);
+    }
+
+    function _verifyOperatorTeeRaQuote(bytes memory _teeRaQuote, bytes32 _rtmr3Hash) internal view {
+        // Verify TEE RA Quote
+        (bool success, bytes memory output) = automataDcapAttestation.verifyAndAttestOnChain(_teeRaQuote);
+        if (!success) {
+            revert(string(output));
+        }
+
+        // Extract RTMR3 from TEE RA Quote
+        bytes memory rtmr3Bytes = new bytes(48);
+        for (uint256 i = 520; i < 568; i++) {
+            rtmr3Bytes[i - 520] = _teeRaQuote[i];
+        }
+
+        if (keccak256(rtmr3Bytes) != _rtmr3Hash) {
+            revert("TaskRegistry: RTMR3 mismatch");
+        }
     }
 }
