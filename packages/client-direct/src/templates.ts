@@ -28,6 +28,7 @@ As {{agentName}} on the ${team} team, your task is to generate search queries th
 3. Include queries for both supporting AND contradicting evidence to ensure balanced research
 4. Prioritize authoritative sources (academic research, government data, expert consensus)
 5. Avoid leading or biased query formulations
+6. If the claim mentions specific dates or future events, include queries to verify the current date and timeline
 
 ## Examples of Effective Queries:
 - Instead of "Did X happen?" use "Timeline of events for X with verified sources"
@@ -66,6 +67,7 @@ Requirements:
 - Include ${MIN_QUERIES}-${MAX_QUERIES} diverse, specific queries
 - Each query should target different aspects or evidence types
 - At least one query should seek evidence that might contradict your team's assumption
+- If the claim mentions dates or future events, include a query to verify the current date and timeline
 - Do not include any text outside the JSON object
 `
 }
@@ -105,6 +107,13 @@ As {{agentName}} on the ${team} team, you initially approached this claim assumi
 "Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
 "Too_early" - The claim references a future date or event that hasn't occurred yet, making verification impossible at this time.
 
+# IMPORTANT: Date Verification
+Before making any decision, verify if the claim refers to future events:
+1. The current date is: {{current_date}}
+2. If the claim mentions ANY dates or time periods in the future (after the current date), you MUST use the "too_early" decision
+3. For claims about someone no longer serving in a position during a future time period, the "too_early" decision MUST be used
+4. Do not attempt to predict future events or make assumptions about what will happen
+
 # Your Query Results
 {{queryResults}}
 ` +
@@ -123,11 +132,14 @@ ${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-Your response must be a JSON object with the following structure:
+CRITICAL: Your response MUST be a JSON object with NO TEXT before or after the JSON. The response must include ALL required fields.
+Your entire response should be ONLY the following JSON object:
 
 {
-  "decision": "true|false|depends|inconclusive",
+  "decision": "true|false|depends|inconclusive|too_early",
   "reason": "Your detailed reasoning process...",
+  "confidence": 0-100,
+  "confidence_explanation": "Specific explanation of why you assigned this confidence score...",
   "key_evidence": [
     "Specific evidence point 1 that heavily influenced your decision",
     "Specific evidence point 2 that heavily influenced your decision",
@@ -140,11 +152,20 @@ Your response must be a JSON object with the following structure:
   ]
 }
 
+REQUIRED FIELDS:
+- "decision": MUST be one of the specified values
+- "reason": MUST provide detailed reasoning
+- "confidence": MUST be a number between 0-100
+- "confidence_explanation": MUST explain your confidence score
+- "key_evidence": MUST list 3-5 specific pieces of evidence
+
+OPTIONAL FIELDS:
+- "additional_queries": Include ONLY if there is a CRITICAL information gap
+
 Notes:
-- The "key_evidence" field is required and should list 3-5 specific pieces of evidence
-- The "additional_queries" field is optional and should ONLY be included if there is a CRITICAL information gap
 - Make your decision based on available evidence, not what you believe "should" be true
 - Be specific about which sources and data points influenced your decision
+- If the claim references a future date or event that hasn't occurred yet, use the "too_early" decision
 `;
 }
 
@@ -164,6 +185,13 @@ As {{agentName}}, you are the final arbiter in this structured fact-checking pro
 - The Red team assumed the claim was false and gathered evidence
 
 Your task is to synthesize their findings and make a final, objective determination about the claim's validity.
+
+# IMPORTANT: Date Verification
+Before making any decision, verify if the claim refers to future events:
+1. The current date is: {{current_date}}
+2. If the claim mentions ANY dates or time periods in the future (after the current date), you MUST use the "too_early" decision
+3. For claims about someone no longer serving in a position during a future time period, the "too_early" decision MUST be used
+4. Do not attempt to predict future events or make assumptions about what will happen
 
 ## Analytical Framework
 1. COMPARE the quality, quantity, and relevance of evidence from both teams
@@ -215,8 +243,11 @@ Confidence Score Ranges:
 IMPORTANT: A claim that is clearly false based on strong evidence should receive a HIGH confidence score, not a low one. The confidence score reflects certainty in the assessment, not support for the claim.
 
 # Instructions
-Your response must be a JSON object with the following structure:
+CRITICAL: Your response MUST be a JSON object with NO TEXT before or after the JSON. The response must include ALL required fields.
 
+Your entire response should be ONLY the following JSON object:
+
+This is how the JSON object should look:
 {
   "decision": "true|false|depends|inconclusive|too_early",
   "reason": "Your detailed reasoning process...",
@@ -235,6 +266,15 @@ Your response must be a JSON object with the following structure:
     "Specific missing information 2 that would help resolve this claim"
   ]
 }
+
+REQUIRED FIELDS:
+- "decision": MUST be one of the specified values
+- "reason": MUST provide detailed reasoning
+- "confidence": MUST be a number between 0-100
+- "confidence_explanation": MUST explain your confidence score
+- "strongest_evidence_for": MUST list at least 2 specific evidence points
+- "strongest_evidence_against": MUST list at least 2 specific evidence points
+- "information_gaps": MUST list at least 2 specific information gaps
 
 Notes:
 - First determine your decision based on the evidence
