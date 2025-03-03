@@ -427,6 +427,7 @@ export class WebSearchService extends Service {
             }
         }
 
+        /* Comment out Serper.dev provider initialization
         // Initialize Serper.dev provider
         const serperApiKey = runtime.getSetting("SERPER_API_KEY") as string;
         if (serperApiKey) {
@@ -435,6 +436,7 @@ export class WebSearchService extends Service {
                 this.providers.set(SearchProvider.SERPER, serperProvider);
             }
         }
+        */
     }
 
     getInstance() {
@@ -462,7 +464,7 @@ export class WebSearchService extends Service {
         // Determine which search provider to use
         const provider = options?.provider || SearchProvider.ALL;
         elizaLogger.debug(`Search request with provider: ${provider} for query: "${query}"`);
-        
+
         // If a specific provider is requested
         if (provider !== SearchProvider.ALL) {
             if (this.providers.has(provider)) {
@@ -494,7 +496,7 @@ export class WebSearchService extends Service {
         let i = 0;
         for (const providerResult of providerResults) {
             const name = names[i++];
-            
+
             if (providerResult.status === "fulfilled") {
                 results[name] = providerResult.value;
                 availableProviders++;
