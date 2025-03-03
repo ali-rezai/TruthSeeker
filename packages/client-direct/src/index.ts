@@ -264,7 +264,7 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
     // Generate queries
     const queryContext = composeContext({
         state,
-        template: queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
+        template: injectCurrentDate(queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision)),
     });
     
     const queries = (await generateMessageResponse({
@@ -298,14 +298,25 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
     while (decisionTries < 5) {
         const decisionContext = composeContext({
             state,
-            template: decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
+            template: injectCurrentDate(decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision)),
         });
 
-        decision = await generateMessageResponse({
+        // Use type assertion to bypass TypeScript error
+        let rawResponse = await generateMessageResponse({
             runtime: runtime,
             context: decisionContext,
             modelClass: ModelClass.LARGE,
-        });
+            prefill: `  "decision": "`
+        } as any);
+
+        // Log the raw response to see what we're getting
+        logMessage(team, `Raw ${team} team response: ${typeof rawResponse === 'string' ? rawResponse : JSON.stringify(rawResponse)}`);
+
+        // Try to extract JSON if the response isn't valid JSON
+        decision = extractJsonFromResponse(rawResponse, team, logMessage);
+
+        // Log the processed result
+        logMessage(team, `${team} team decision: ${decision.decision}, confidence: ${decision.confidence}`);
 
         if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
             logMessage(team, `${team} team decided to make additional queries: ${(decision.additional_queries as string[]).join(', ')}`);
@@ -328,15 +339,26 @@ async function aggregateTeams(runtime: IAgentRuntime, state: State, blueTeamInfo
 
     const aggregatorContext = composeContext({
         state,
-        template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
+        template: injectCurrentDate(aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation)),
     });
 
     logMessage("final", "Processing team decisions and evidence...");
-    const aggregationResult = await generateMessageResponse({
+    let rawResponse = await generateMessageResponse({
         runtime: runtime,
         context: aggregatorContext,
         modelClass: ModelClass.LARGE,
-    });
+        prefill: `  "decision": "`
+    } as any);
+
+    // Log the raw response to see what we're getting
+    logMessage("final", `Raw aggregator response: ${typeof rawResponse === 'string' ? rawResponse : JSON.stringify(rawResponse)}`);
+
+    // Try to extract JSON if the response isn't valid JSON
+    const aggregationResult = extractJsonFromResponse(rawResponse, "final", logMessage);
+
+    // Log the processed result
+    logMessage("final", `Final decision: ${aggregationResult.decision}, confidence: ${aggregationResult.confidence}`);
+    logMessage("final", `Full aggregation result: ${JSON.stringify(aggregationResult)}`);
 
     logMessage("final", "Claim verification completed successfully");
     return aggregationResult;
@@ -429,4 +451,87 @@ async function generateAttestation(runtime: IAgentRuntime, info: string) {
 type LogFunction = (team: "blue" | "red" | "final", message: string) => void;
 function defaultLogFunction(team: "blue" | "red" | "final", message: string) {
     elizaLogger.info(message);
+}
+
+function injectCurrentDate(template: string): string {
+    const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+    return template.replace(/{{current_date}}/g, currentDate);
+}
+
+// Helper function to extract JSON from potentially invalid responses
+function extractJsonFromResponse(response: any, team: "blue" | "red" | "final", logMessage: LogFunction): any {
+    // If it's already a valid object with the required fields, return it
+    if (typeof response === 'object' && response !== null &&
+        (response.decision || team === "blue" || team === "red")) {
+
+        // Convert confidence to number if it's a string
+        if (response.confidence && typeof response.confidence === 'string') {
+            try {
+                response.confidence = parseInt(response.confidence, 10);
+                logMessage(team, `${team} team confidence was a string, converted to number: ${response.confidence}`);
+            } catch (error) {
+                response.confidence = 50;
+                logMessage(team, `${team} team confidence could not be parsed as a number, assigned default value of 50`);
+            }
+        }
+
+        // Ensure confidence score exists and is a number
+        if (!response.confidence || typeof response.confidence !== 'number') {
+            response.confidence = 50;
+            response.confidence_explanation = "Default confidence score assigned as it was missing from the response.";
+            logMessage(team, `${team} team response was missing confidence score, assigned default value of 50`);
+        }
+
+        return response;
+    }
+
+    // If it's a string, try to extract JSON from it
+    if (typeof response === 'string') {
+        try {
+            // Look for JSON-like pattern in the string
+            const jsonMatch = response.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const jsonStr = jsonMatch[0];
+                const parsedJson = JSON.parse(jsonStr);
+
+                logMessage(team, `${team} team response contained text outside JSON, extracted valid JSON`);
+
+                // Convert confidence to number if it's a string
+                if (parsedJson.confidence && typeof parsedJson.confidence === 'string') {
+                    try {
+                        parsedJson.confidence = parseInt(parsedJson.confidence, 10);
+                        logMessage(team, `${team} team confidence was a string, converted to number: ${parsedJson.confidence}`);
+                    } catch (error) {
+                        parsedJson.confidence = 50;
+                        logMessage(team, `${team} team confidence could not be parsed as a number, assigned default value of 50`);
+                    }
+                }
+
+                // Ensure confidence score exists and is a number
+                if (!parsedJson.confidence || typeof parsedJson.confidence !== 'number') {
+                    parsedJson.confidence = 50;
+                    parsedJson.confidence_explanation = "Default confidence score assigned as it was missing from the response.";
+                    logMessage(team, `${team} team response was missing confidence score, assigned default value of 50`);
+                }
+
+                return parsedJson;
+            }
+        } catch (error) {
+            logMessage(team, `Error parsing JSON from ${team} team response: ${error.message}`);
+        }
+    }
+
+    // If we couldn't extract valid JSON, create a default response
+    logMessage(team, `${team} team response was not valid JSON, creating default response`);
+
+    return {
+        decision: team === "final" ? "inconclusive" : "depends",
+        reason: "Could not parse a valid response from the model output.",
+        confidence: 50,
+        confidence_explanation: "Default confidence due to parsing error in model response.",
+        key_evidence: ["No valid evidence could be extracted from the model response."],
+        strongest_evidence_for: team === "final" ? ["No valid evidence could be extracted."] : undefined,
+        strongest_evidence_against: team === "final" ? ["No valid evidence could be extracted."] : undefined,
+        information_gaps: team === "final" ? ["Complete model response could not be parsed as valid JSON."] : undefined
+    };
 }
