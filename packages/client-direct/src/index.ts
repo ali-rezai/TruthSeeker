@@ -266,7 +266,11 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
         state,
         template: injectCurrentDate(queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision)),
     });
-    
+
+    // Print the query context
+    elizaLogger.info(`${team} team queryContext:`, JSON.stringify(queryContext, null, 2));
+    logMessage(team, `${team} team queryContext: ${JSON.stringify(queryContext)}`);
+
     const queries = (await generateMessageResponse({
         runtime: runtime,
         context: queryContext,
@@ -300,6 +304,10 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
             state,
             template: injectCurrentDate(decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision)),
         });
+
+        // Print the decision context
+        elizaLogger.info(`${team} team decisionContext:`, JSON.stringify(decisionContext, null, 2));
+        logMessage(team, `${team} team decisionContext: ${JSON.stringify(decisionContext)}`);
 
         // Use type assertion to bypass TypeScript error
         let rawResponse = await generateMessageResponse({
@@ -342,6 +350,10 @@ async function aggregateTeams(runtime: IAgentRuntime, state: State, blueTeamInfo
         template: injectCurrentDate(aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation)),
     });
 
+    // Print the aggregator context
+    elizaLogger.info(`Aggregator context:`, JSON.stringify(aggregatorContext, null, 2));
+    logMessage("final", `Aggregator context: ${JSON.stringify(aggregatorContext)}`);
+
     logMessage("final", "Processing team decisions and evidence...");
     let rawResponse = await generateMessageResponse({
         runtime: runtime,
@@ -374,7 +386,7 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                 // Use all available providers
                 const searchResponse = await webSearchService.search(query, {
                     tavily: {
-                        includeAnswer: true,  
+                        includeAnswer: true,
                     }
                 });
 
