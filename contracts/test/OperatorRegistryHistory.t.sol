@@ -58,34 +58,34 @@ contract OperatorRegistryHistoryTest is PCCSSetupBase {
         vm.prank(operator1);
         operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
-        uint256 block1 = block.number;
+        uint256 block1 = vm.getBlockNumber();
         
         // Move to next block
-        vm.roll(block.number + 1);
+        vm.roll(block1 + 1);
         
         // Register operator2 at block 2
         vm.prank(operator2);
         operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
-        uint256 block2 = block.number;
+        uint256 block2 = vm.getBlockNumber();
         
         // Move to next block
-        vm.roll(block.number + 1);
+        vm.roll(block2 + 1);
         
         // Deregister operator1 by withdrawing below registration fee
         vm.prank(operator1);
         operatorRegistry.withdrawEth(0.05 ether);
         
-        uint256 block3 = block.number;
+        uint256 block3 = vm.getBlockNumber();
         
         // Move to next block
-        vm.roll(block.number + 1);
+        vm.roll(block3 + 1);
         
         // Register operator3 at block 4
         vm.prank(operator3);
         operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
-        uint256 block4 = block.number;
+        uint256 block4 = vm.getBlockNumber();
         
         // Check historical operator indices
         assertEq(operatorRegistry.getOperatorAtIndexAt(0, block1), operator1, "Operator1 should be at index 0 at block1");
@@ -105,25 +105,25 @@ contract OperatorRegistryHistoryTest is PCCSSetupBase {
         vm.prank(operator1);
         operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
-        uint256 block1 = block.number;
+        uint256 block1 = vm.getBlockNumber();
         
         // Move to next block
-        vm.roll(block.number + 1);
+        vm.roll(block1 + 1);
         
         // Register operator2 at block 2
         vm.prank(operator2);
         operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
-        uint256 block2 = block.number;
+        uint256 block2 = vm.getBlockNumber();
         
         // Move to next block
-        vm.roll(block.number + 1);
+        vm.roll(block2 + 1);
         
         // Deregister operator1 by withdrawing below registration fee
         vm.prank(operator1);
         operatorRegistry.withdrawEth(0.05 ether);
         
-        uint256 block3 = block.number;
+        uint256 block3 = vm.getBlockNumber();
         
         // Check operator list at different blocks
         address[] memory operatorsAtBlock1 = operatorRegistry.getOperatorListAtBlockNumber(block1);
