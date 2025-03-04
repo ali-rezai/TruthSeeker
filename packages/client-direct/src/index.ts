@@ -264,7 +264,7 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
     // Generate queries
     const queryContext = composeContext({
         state,
-        template: injectCurrentDate(queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision)),
+        template: queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
     });
 
     // Print the query context
@@ -302,7 +302,7 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
     while (decisionTries < 5) {
         const decisionContext = composeContext({
             state,
-            template: injectCurrentDate(decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision)),
+            template: decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
         });
 
         // Print the decision context
@@ -347,7 +347,7 @@ async function aggregateTeams(runtime: IAgentRuntime, state: State, blueTeamInfo
 
     const aggregatorContext = composeContext({
         state,
-        template: injectCurrentDate(aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation)),
+        template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
     });
 
     // Print the aggregator context
@@ -463,11 +463,6 @@ async function generateAttestation(runtime: IAgentRuntime, info: string) {
 type LogFunction = (team: "blue" | "red" | "final", message: string) => void;
 function defaultLogFunction(team: "blue" | "red" | "final", message: string) {
     elizaLogger.info(message);
-}
-
-function injectCurrentDate(template: string): string {
-    const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
-    return template.replace(/{{current_date}}/g, currentDate);
 }
 
 // Helper function to extract JSON from potentially invalid responses

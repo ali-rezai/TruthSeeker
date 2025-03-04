@@ -79,6 +79,8 @@ export function decisionTemplate(team: "blue" | "red", prevTeam?: "blue" | "red"
     const goal = team == "blue" ? "support and prove" : "debunk and disprove";
     const negativeGoal = team == "blue" ? "debunk and disprove" : "support and prove";
 
+    const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+
     return `# About {{agentName}}
 {{bio}}
 {{lore}}
@@ -109,7 +111,7 @@ As {{agentName}} on the ${team} team, you initially approached this claim assumi
 
 # IMPORTANT: Date Verification
 Before making any decision, verify if the claim refers to future events:
-1. The current date is: {{current_date}}
+1. The current date is: ${currentDate}
 2. If the claim mentions ANY dates or time periods in the future (after the current date), you MUST use the "too_early" decision
 3. For claims about someone no longer serving in a position during a future time period, the "too_early" decision MUST be used
 4. Do not attempt to predict future events or make assumptions about what will happen
@@ -170,7 +172,9 @@ Notes:
 }
 
 export function aggregatorTemplate(blueTeamDecision: any, blueTeamInformation: string, redTeamDecision: any, redTeamInformation: string) {
-    return `# About {{agentName}}
+  const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
+  
+  return `# About {{agentName}}
 {{bio}}
 {{lore}}
 
@@ -188,7 +192,7 @@ Your task is to synthesize their findings and make a final, objective determinat
 
 # IMPORTANT: Date Verification
 Before making any decision, verify if the claim refers to future events:
-1. The current date is: {{current_date}}
+1. The current date is: ${currentDate}
 2. If the claim mentions ANY dates or time periods in the future (after the current date), you MUST use the "too_early" decision
 3. For claims about someone no longer serving in a position during a future time period, the "too_early" decision MUST be used
 4. Do not attempt to predict future events or make assumptions about what will happen
