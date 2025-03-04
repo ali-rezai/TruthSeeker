@@ -11,5 +11,5 @@ cast send $TASK_REGISTRY \
    "$1" \
   --rpc-url $RPC_URL \
   --private-key $USER_PRIVATE_KEY \
-  --value 0.01ether \
+  --value 0.0001ether \
   --legacy

@@ -10,9 +10,9 @@ contract DeployTaskRegistry is Script {
         address automataDcapAttestation = vm.envAddress("AUTOMATA_DCAP_ATTESTATION");
         vm.startBroadcast(deployerPrivateKey);
 
-        // Deploy with a registration fee of 0.1 ether and a submission fee of 0.01 ether
-        OperatorRegistry operatorRegistry = new OperatorRegistry(0.1 ether, address(automataDcapAttestation));
-        TaskRegistry taskRegistry = new TaskRegistry(0.01 ether, address(operatorRegistry), address(automataDcapAttestation));
+        // Deploy with a registration fee of 0.001 ether and a submission fee of 0.0001 ether
+        OperatorRegistry operatorRegistry = new OperatorRegistry(0.001 ether, address(automataDcapAttestation));
+        TaskRegistry taskRegistry = new TaskRegistry(0.0001 ether, address(operatorRegistry), address(automataDcapAttestation));
 
         vm.stopBroadcast();
         console.log("OperatorRegistry deployed at:", address(operatorRegistry));

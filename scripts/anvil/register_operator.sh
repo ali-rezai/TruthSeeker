@@ -14,5 +14,5 @@ cast send $OPERATOR_REGISTRY \
   "$QUOTE" \
   --rpc-url $RPC_URL \
   --private-key $OPERATOR_PRIVATE_KEY \
-  --value 0.1ether \
+  --value 0.001ether \
   --legacy

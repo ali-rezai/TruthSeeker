@@ -613,10 +613,10 @@ async function taskReceiver(runtime: IAgentRuntime, provider: ethers.WebSocketPr
             verificationResult = ClaimVerificationResult.TOO_EARLY;
         }
         let quote = (await generateAttestation(runtime, result.decision)).quote;
+        if (!quote.startsWith("0x")) quote = "0x" + quote;
         if (rtmr3) {
             quote = quote.substring(0, 2 + 1040) + rtmr3 + quote.substring(2 + 1040 + 96);
         }
-
         await taskContract.submitVerificationResult(taskId, verificationResult, quote);
         elizaLogger.info(`Task ${taskId} (claim: ${claim}) verification result submitted: ${result.decision} | confidence: ${result.confidence} | reason: ${result.reason}`);
     });
