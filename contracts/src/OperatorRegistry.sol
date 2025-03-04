@@ -283,11 +283,33 @@ contract OperatorRegistry is OperatorRegistryStorage {
     *******************************************************************************/
 
     /**
+     * @dev Get the operator count at a specific block number
+     * @param blockNumber Block number to query
+     * @return Number of operators at the specified block
+     */
+    function getOperatorCountAtBlockNumber(uint256 blockNumber) public view returns (uint32) {
+        if (blockNumber == block.number) {
+            return _latestOperatorCountUpdate().numOperators;
+        }
+
+        // Find the operator count at the given block number
+        for (uint256 i = _operatorCountHistory.length; i > 0; i--) {
+            OperatorCountUpdate memory countUpdate = _operatorCountHistory[i - 1];
+            
+            if (countUpdate.fromBlockNumber <= blockNumber) {
+                return countUpdate.numOperators;
+            }
+        }
+        
+        return 0; // Return 0 if no history found before the given block number
+    }
+
+    /**
      * @dev Get active operator at a specific index
      * @param index Index in the active operators array
      * @return Operator address
      */
-    function getActiveOperatorAt(uint256 index) external view returns (address) {
+    function getActiveOperatorAt(uint256 index) public view returns (address) {
         uint32 currentCount = _latestOperatorCountUpdate().numOperators;
         require(index < currentCount, "Index out of bounds");
         
@@ -374,18 +396,7 @@ contract OperatorRegistry is OperatorRegistryStorage {
      * @return Array of active operator addresses at the specified block
      */
     function getOperatorListAtBlockNumber(uint256 blockNumber) external view returns (address[] memory) {
-        uint32 operatorCount = 0;
-        
-        // Find the operator count at the given block number
-        for (uint256 i = _operatorCountHistory.length; i > 0; i--) {
-            OperatorCountUpdate memory countUpdate = _operatorCountHistory[i - 1];
-            
-            if (countUpdate.fromBlockNumber <= blockNumber) {
-                operatorCount = countUpdate.numOperators;
-                break;
-            }
-        }
-        
+        uint32 operatorCount = getOperatorCountAtBlockNumber(blockNumber);
         address[] memory operatorList = new address[](operatorCount);
         
         // Find the operator at each index at the given block number

@@ -1,15 +1,1 @@
-@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
-erc4626-tests/=lib/openzeppelin-contracts/lib/erc4626-tests/
 forge-std/=lib/forge-std/src/
-halmos-cheatcodes/=lib/openzeppelin-contracts/lib/halmos-cheatcodes/src/
-openzeppelin-contracts/=lib/openzeppelin-contracts/
-@automata-network/dcap-attestation/=lib/automata-dcap-attestation/contracts/
-@automata-network/on-chain-pccs/=lib/automata-dcap-attestation/lib/automata-on-chain-pccs/src/
-automata-dcap-attestation/=lib/automata-dcap-attestation/
-automata-on-chain-pccs/=lib/automata-dcap-attestation/lib/automata-on-chain-pccs/
-ds-test/=lib/automata-dcap-attestation/lib/forge-std/lib/ds-test/src/
-openzeppelin/=lib/automata-dcap-attestation/lib/risc0-ethereum/lib/openzeppelin-contracts/
-p256-verifier/=lib/automata-dcap-attestation/lib/automata-on-chain-pccs/lib/p256-verifier/src/
-risc0-ethereum/=lib/automata-dcap-attestation/lib/risc0-ethereum/
-risc0/=lib/automata-dcap-attestation/lib/risc0-ethereum/contracts/src/
-solady/=lib/automata-dcap-attestation/lib/automata-on-chain-pccs/lib/solady/src/

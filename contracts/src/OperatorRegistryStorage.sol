@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@automata-network/dcap-attestation/AutomataDcapAttestation.sol";
+import "./IAutomataDcapAttestation.sol";
 
 /**
  * @title OperatorRegistryStorage
  * @dev Base contract containing all storage variables for OperatorRegistry
  */
 contract OperatorRegistryStorage {
-    AutomataDcapAttestation public automataDcapAttestation;
+    IAutomataDcapAttestation public automataDcapAttestation;
 
     // TEE parameters (MRTD, RTMR0, RTMR1, RTMR2 are static and precalculated)
     // bytes public constant MRTD = hex"c68518a0ebb42136c12b2275164f8c72f25fa9a34392228687ed6e9caeb9c0f1dbd895e9cf475121c029dc47e70e91fd";
@@ -79,7 +79,7 @@ contract OperatorRegistryStorage {
     constructor(uint256 _registrationFee, address _automataDcapAttestation) {
         require(_registrationFee > 0, "Fee must be greater than 0");
         registrationFee = _registrationFee;
-        automataDcapAttestation = AutomataDcapAttestation(_automataDcapAttestation);
+        automataDcapAttestation = IAutomataDcapAttestation(_automataDcapAttestation);
 
         // Initialize operator count history with zero operators
         _operatorCountHistory.push(OperatorCountUpdate({

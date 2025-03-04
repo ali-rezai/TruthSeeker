@@ -3,39 +3,19 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import "../src/OperatorRegistry.sol";
-import "@automata-network/dcap-attestation/verifiers/V4QuoteVerifier.sol";
-import "automata-dcap-attestation/forge-test/utils/PCCSSetupBase.sol";
+import "../src/IAutomataDcapAttestation.sol";
 
-contract OperatorRegistryTest is PCCSSetupBase {
+contract OperatorRegistryTest is Test {
     OperatorRegistry public operatorRegistry;
-    AutomataDcapAttestation public automataDcapAttestation;
+    IAutomataDcapAttestation public automataDcapAttestation;
     address public owner;
     address public operator1;
     address public operator2;
     uint256 public registrationFee = 0.1 ether;
     bytes public sampleQuote = vm.readFileBinary(string.concat(vm.projectRoot(), "/test/assets/quote.bin"));
 
-    function setUp() public override {
-        super.setUp();
-        vm.startPrank(admin);
-
-        // PCCS Setup
-        PCCSRouter pccsRouter = setupPccsRouter();
-        pcsDaoUpserts();
-        
-        // collateral upserts
-        vm.warp(1740947347);
-        string memory tcbInfoPath = "/test/assets/tcbinfo.json";
-        string memory qeIdPath = "/test/assets/identity.json";
-        qeIdDaoUpsert(4, qeIdPath);
-        fmspcTcbDaoUpsert(tcbInfoPath);
-
-        automataDcapAttestation = new AutomataDcapAttestation(0x0000000000000000000000000000000000000000, bytes32(0));
-
-        V4QuoteVerifier v4QuoteVerifier = new V4QuoteVerifier(address(pccsRouter));
-        automataDcapAttestation.setQuoteVerifier(address(v4QuoteVerifier));
-        
-        vm.stopPrank();
+    function setUp() public {
+        automataDcapAttestation = new MockAutomataDcapAttestation();
         
         owner = address(this);
         operator1 = makeAddr("operator1");

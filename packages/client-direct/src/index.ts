@@ -17,6 +17,10 @@ import express from "express";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
 import { aggregatorTemplate, decisionTemplate, queryTemplate } from "./templates.ts";
+import { ethers, EventLog } from "ethers";
+
+import TaskRegistryJSON from "./TaskRegistry.json"
+const TaskRegistryABI = TaskRegistryJSON.abi;
 
 export class DirectClient {
     public app: express.Application;
@@ -184,6 +188,22 @@ export class DirectClient {
         // Handle different shutdown signals
         process.on("SIGTERM", gracefulShutdown);
         process.on("SIGINT", gracefulShutdown);
+
+        const runtime = Array.from(this.agents.values()).find(
+            (a) => a.character.name.toLowerCase() === "truthseeker"
+        );
+        if (!runtime) {
+            elizaLogger.error("Truthseeker runtime not found");
+            return;
+        }
+        const rpcUrl = runtime.getSetting("TRUTHSEEKER_WS_RPC_URL");
+        const privateKey = runtime.getSetting("TRUTHSEEKER_OPERATOR_PRIVATE_KEY");
+        const contractAddress = runtime.getSetting("TRUTHSEEKER_TASK_CONTRACT_ADDRESS");
+
+        const provider = new ethers.WebSocketProvider(rpcUrl);
+        const wallet = new ethers.Wallet(privateKey, provider);
+        const taskContract = new ethers.Contract(contractAddress, TaskRegistryABI, wallet);
+        taskReceiver(runtime, provider, wallet, taskContract);
     }
 
     public async stop() {
@@ -541,4 +561,65 @@ function extractJsonFromResponse(response: any, team: "blue" | "red" | "final", 
         strongest_evidence_against: team === "final" ? ["No valid evidence could be extracted."] : undefined,
         information_gaps: team === "final" ? ["Complete model response could not be parsed as valid JSON."] : undefined
     };
+}
+
+enum ClaimVerificationResult {
+    PENDING,
+    TRUE,
+    FALSE,
+    DEPENDS,
+    INCONCLUSIVE,
+    TOO_EARLY
+};
+
+async function taskReceiver(runtime: IAgentRuntime, provider: ethers.WebSocketProvider, wallet: ethers.Wallet, taskContract: ethers.Contract) {
+    let rtmr3;
+    if (runtime.getSetting("TEE_MODE") != "PRODUCTION") {
+        const quote = (await generateAttestation(runtime, "register")).quote;
+        elizaLogger.info("Quote for registration:", quote);
+        rtmr3 = quote.substring(2 + 1040, 2 + 1040 + 96);
+    }
+
+    const roomId = stringToUuid("default-room");
+    const userId = stringToUuid("user");
+    await runtime.ensureConnection(userId, roomId, null, null, "direct");
+
+    const taskSubmittedFilter = await taskContract.filters.TaskSubmitted(null, wallet.address, null).getTopicFilter()
+    taskContract.on(taskSubmittedFilter, async (event: EventLog) => {
+        const [taskId, operator, claim] = event.args;
+        elizaLogger.info("Task received:", claim);
+
+        const state = await runtime.composeState({
+            content: { text: "" },
+            userId,
+            roomId,
+            agentId: runtime.agentId
+        }, {
+            agentName: runtime.character.name,
+            claim
+        })
+        const result = await blueRedAggregate(runtime, state);
+
+        let verificationResult: ClaimVerificationResult;
+        if (result.decision === "true") {
+            verificationResult = ClaimVerificationResult.TRUE;
+        } else if (result.decision === "false") {
+            verificationResult = ClaimVerificationResult.FALSE;
+        } else if (result.decision === "depends") {
+            verificationResult = ClaimVerificationResult.DEPENDS;
+        } else if (result.decision === "inconclusive") {
+            verificationResult = ClaimVerificationResult.INCONCLUSIVE;
+        } else if (result.decision === "too_early") {
+            verificationResult = ClaimVerificationResult.TOO_EARLY;
+        }
+        let quote = (await generateAttestation(runtime, result.decision)).quote;
+        if (rtmr3) {
+            quote = quote.substring(0, 2 + 1040) + rtmr3 + quote.substring(2 + 1040 + 96);
+        }
+
+        await taskContract.submitVerificationResult(taskId, verificationResult, quote);
+        elizaLogger.info(`Task ${taskId} (claim: ${claim}) verification result submitted: ${result.decision} | confidence: ${result.confidence} | reason: ${result.reason}`);
+    });
+
+    elizaLogger.info("Started task receiver");
 }
