@@ -1,14 +1,14 @@
 services:
     truthseeker:
-        image: grizzlar99/eliza-agent:latest
+        image: grizzlar99/truthseeker:latest
         volumes:
             - /var/run/tappd.sock:/var/run/tappd.sock
         environment:
-            - OPENAI_API_KEY=$OPENAI_API_KEY
+            - ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
             - TAVILY_API_KEY=$TAVILY_API_KEY
             - EXA_API_KEY=$EXA_API_KEY
-            - SERPER_API_KEY=$SERPER_API_KEY
-            - TEE_MODE=DOCKER
+            - PERPLEXITY_API_KEY=$PERPLEXITY_API_KEY
+            - TEE_MODE=PRODUCTION
         ports:
             - "3000:3000"
         restart: always
