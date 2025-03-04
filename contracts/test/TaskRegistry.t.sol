@@ -85,7 +85,7 @@ contract TaskRegistryTest is PCCSSetupBase {
         
         // Verify the task as true
         vm.startPrank(user2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, hex"d0d8ca1f66206a4dd8254e0b324959baa5e158f4766f14e95a2098b3183965d8aafa6ae8e474023a9ab56bfa61f75ce1", hex"d821f90b6cab2a8e6a5d899a607b80b7edabb20764c59667a2f2c51c3c449e736398990bcb7c4563c5ea9f2e38189e13");
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.TRUE, sampleQuote);
         vm.stopPrank();
         
@@ -102,7 +102,7 @@ contract TaskRegistryTest is PCCSSetupBase {
         
         // Verify the task first time
         vm.startPrank(user2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, hex"d0d8ca1f66206a4dd8254e0b324959baa5e158f4766f14e95a2098b3183965d8aafa6ae8e474023a9ab56bfa61f75ce1", hex"d821f90b6cab2a8e6a5d899a607b80b7edabb20764c59667a2f2c51c3c449e736398990bcb7c4563c5ea9f2e38189e13");
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.TRUE, sampleQuote);
         vm.stopPrank();
         

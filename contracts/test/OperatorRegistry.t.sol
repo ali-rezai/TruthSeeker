@@ -52,7 +52,7 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testRegisterOperator() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Check operator status
         (bytes32 rtmr3, uint256 stake, OperatorRegistry.OperatorStatus status) = operatorRegistry.operators(operator1);
@@ -74,31 +74,31 @@ contract OperatorRegistryTest is PCCSSetupBase {
         // Try to register with insufficient fee
         vm.prank(operator1);
         vm.expectRevert("Insufficient ETH sent");
-        operatorRegistry.registerOperator{value: registrationFee - 0.01 ether}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee - 0.01 ether}(sampleQuote);
     }
     
     function testRegisterOperatorEmptyQuote() public {
         // Try to register with empty quote
         vm.prank(operator1);
         vm.expectRevert("Empty TEE RA quote");
-        operatorRegistry.registerOperator{value: registrationFee}(bytes(""), bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(bytes(""));
     }
     
     function testRegisterOperatorAlreadyRegistered() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Try to register again
         vm.prank(operator1);
         vm.expectRevert("Already registered");
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
     }
     
     function testDepositEth() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Deposit additional ETH
         uint256 additionalAmount = 0.5 ether;
@@ -120,7 +120,7 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testDepositEthZeroAmount() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Try to deposit zero ETH
         vm.prank(operator1);
@@ -132,7 +132,7 @@ contract OperatorRegistryTest is PCCSSetupBase {
         // Register operator1 with extra funds
         uint256 initialDeposit = registrationFee + 0.5 ether;
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: initialDeposit}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: initialDeposit}(sampleQuote);
         
         // Withdraw some ETH
         uint256 withdrawAmount = 0.2 ether;
@@ -151,7 +151,7 @@ contract OperatorRegistryTest is PCCSSetupBase {
         // Register operator1 with extra funds
         uint256 initialDeposit = registrationFee + 0.05 ether;
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: initialDeposit}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: initialDeposit}(sampleQuote);
         
         // Withdraw amount that puts stake below registration fee
         uint256 withdrawAmount = 0.06 ether;
@@ -171,7 +171,7 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testWithdrawEthInsufficientBalance() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Try to withdraw more than available
         vm.prank(operator1);
@@ -182,7 +182,7 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testDeregisteredOperatorCannotDeposit() public {
         // Register operator1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Withdraw to become deregistered
         vm.prank(operator1);
@@ -203,10 +203,10 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testGetActiveOperatorAt() public {
         // Register two operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Get operators by index
         address retrievedOperator0 = operatorRegistry.getActiveOperatorAt(0);
@@ -229,10 +229,10 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testGetContractBalance() public {
         // Register two operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Check contract balance
         assertEq(operatorRegistry.getContractBalance(), 2 * registrationFee, "Contract balance should equal total deposits");
@@ -241,10 +241,10 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testGetOperatorList() public {
         // Register two operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Get operator list
         address[] memory operators = operatorRegistry.getOperatorList();
@@ -263,15 +263,15 @@ contract OperatorRegistryTest is PCCSSetupBase {
     function testDeregisterAndReindexOperators() public {
         // Register three operators
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         address operator3 = makeAddr("operator3");
         vm.deal(operator3, 1 ether);
         vm.prank(operator3);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         // Deregister the middle operator (operator3)
         vm.prank(operator3);

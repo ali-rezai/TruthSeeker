@@ -19,7 +19,7 @@ contract OperatorRegistry is OperatorRegistryStorage {
      * @dev Register as an operator with a TEE RA quote
      * @param teeRaQuote The TEE RA quote for verification
      */
-    function registerOperator(bytes calldata teeRaQuote, bytes calldata composeHashDigest, bytes calldata instanceIdDigest) external payable {
+    function registerOperator(bytes calldata teeRaQuote) external payable {
         require(operators[msg.sender].status != OperatorStatus.Registered, "Already registered");
         require(teeRaQuote.length > 0, "Empty TEE RA quote");
         require(msg.value >= registrationFee, "Insufficient ETH sent");
@@ -30,12 +30,13 @@ contract OperatorRegistry is OperatorRegistryStorage {
             revert(string(output));
         }
 
-        // TODO: Verify compose hash digest (will need ZKP as there will be private data in there along with the docker compose)
-        // Calculate Expected RTMR3 based on data in OperatorRegistryStorage, composeHashDigest and instanceIdDigest
-        // Extract MRTD, RTMR0, RTMR1, RTMR2, RTMR3 from TEE RA Quote
-        // MRTD, RTMR0, RTMR1, RTMR2 should match the constants in OperatorRegistryStorage
-        // RTMR3 should match the expected RTMR3
-        // If any of these checks fail, revert
+        // TODO: Verify RTMR3's value with Risc0 ZKP
+        // It must be
+        // A = SHA384(INIT_MR, ROOTFS_HASH_DIGEST)
+        // B = SHA384(A, APP_ID_DIGEST)
+        // C = SHA384(B, COMPOSE_HASH_DIGEST)
+        // D = SHA384(C, CA_CERT_HASH_DIGEST)
+        // RTMR3 = SHA384(D, INSTANCE_ID_DIGEST)
 
         bytes memory rtmr3Bytes = new bytes(48);
         for (uint256 i = 520; i < 568; i++) {

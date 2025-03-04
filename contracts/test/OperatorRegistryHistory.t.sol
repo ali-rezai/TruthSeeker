@@ -56,7 +56,7 @@ contract OperatorRegistryHistoryTest is PCCSSetupBase {
     function testOperatorIndexHistory() public {
         // Register operator1 at block 1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         uint256 block1 = block.number;
         
@@ -65,7 +65,7 @@ contract OperatorRegistryHistoryTest is PCCSSetupBase {
         
         // Register operator2 at block 2
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         uint256 block2 = block.number;
         
@@ -83,7 +83,7 @@ contract OperatorRegistryHistoryTest is PCCSSetupBase {
         
         // Register operator3 at block 4
         vm.prank(operator3);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         uint256 block4 = block.number;
         
@@ -103,7 +103,7 @@ contract OperatorRegistryHistoryTest is PCCSSetupBase {
     function testOperatorListAtBlockNumber() public {
         // Register operator1 at block 1
         vm.prank(operator1);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         uint256 block1 = block.number;
         
@@ -112,7 +112,7 @@ contract OperatorRegistryHistoryTest is PCCSSetupBase {
         
         // Register operator2 at block 2
         vm.prank(operator2);
-        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote, bytes(""), bytes(""));
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
         
         uint256 block2 = block.number;
         
