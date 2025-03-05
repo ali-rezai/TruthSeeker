@@ -21,15 +21,15 @@ As {{agentName}} on the ${team} team, your task is to generate search queries th
 For this exercise, you are temporarily assuming the claim is ${assumption} for your evidence gathering stage.
 
 ## Query Guidelines
-1. Do not directly search for the claim. Instead search for facts and data points that could help you ${goal} the claim.
+- Do not directly search for the claim. Instead search for facts and data points that could help you ${goal} the claim.
     - Instead of "did X happen?", search for specific details about X
     - Instead of "is Y true?", search for facts and statistics about Y
     - Instead of "was Z successful?", search for specific details about Z
-2. Focus on facts and data points rather than opinions or general information
-3. Prioritize authoritative sources (academic research, government data, expert consensus, official bodies, etc.)
-4. Avoid leading or biased query formulations
-5. If the claim mentions specific dates, past events, or future events, make sure to have queries that can help you verify the dates and timelines
-6. Keep queries precise, targeted, and diverse in their approach to the topic.
+- Focus on facts and data points rather than opinions or general information
+- Prioritize authoritative sources (academia, government, expert consensus, official bodies, etc.)
+- Avoid leading or biased query formulations
+- If the claim mentions specific dates, past events, or future events, make sure to have queries that can help you verify the dates and timelines
+- Keep queries precise, targeted, and diverse in their approach to the topic.
 
 ` +
 (prevTeam != null ? `
@@ -85,22 +85,24 @@ As {{agentName}} on the ${team} team, you initially approached this claim assumi
 
 IMPORTANT: Date Verification
 Before making any decision, verify if the claim refers to future events:
-1. The current date is: ${currentDate}
-2. If the claim relies on ANYTHING in the future (after the current date), you MUST use the "too_early" decision
-3. Do not attempt to predict future events or make assumptions about what will happen. Laws can change, people can be replaced, many things can happen.
+- The current date is: ${currentDate}
+- If the claim relies on ANYTHING in the future (after the current date), you MUST use the "too_early" decision
+- Do not attempt to predict future events or make assumptions about what will happen. Laws can change, people can be replaced, many things can happen.
     - Example: "Donald Trump can't run for president again" should be "too_early" even if he has already served two terms since laws can change. However "Based on current laws, Donald Trump can't run for president again" would be "true"
 
 ## Analytical Framework
-1. Weigh CONFLICTING evidence fairly, noting strength of each position
-2. Identify any GAPS in available information
-3. Consider ALTERNATIVE interpretations of the evidence
-4. Determine if the claim is SPECIFIC enough to be verified
-5. Be willing to CHANGE your initial assumption based on evidence
-6. Check if the claim references a FUTURE DATE or event that hasn't occurred yet
+- Weigh CONFLICTING evidence fairly, noting strength of each position
+- Identify any GAPS in available information
+- Consider ALTERNATIVE interpretations of the evidence
+- Determine if the claim is SPECIFIC enough to be verified
+- Be willing to CHANGE your initial assumption based on evidence
+- Check if the claim references a FUTURE DATE or event that hasn't occurred yet
+- If something is contradictory, seems fabricated, or fake do extra research about it and do not make assumptions
+
 
 ## Decision Criteria (Apply Strictly)
-"True" - The claim is DEMONSTRABLY true based on high-quality evidence with minimal credible contradicting evidence.
-"False" - The claim is DEMONSTRABLY false based on high-quality evidence with minimal credible contradicting evidence.
+"True" - The claim is DEMONSTRABLY true based on evidence with minimal contradicting evidence.
+"False" - The claim is DEMONSTRABLY false based on evidence with minimal contradicting evidence.
 "Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim that would greatly affect your decision.
 "Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
 "Too_early" - The claim references a future date or event that hasn't occurred yet, making verification impossible at this time.
@@ -129,11 +131,13 @@ Reasoning: ${prevTeamDecision.reason}
 `
 # Instructions
 Your response must be ONLY a JSON object with the following fields:
-- "decision": REQUIRED. MUST be one of "true|false|depends|inconclusive|too_early" (text)
-- "reason": REQUIRED. MUST provide your detailed reasoning as to why you made that decision (text)
-- "confidence": REQUIRED. MUST be a number between 0-100 (number)
-- "key_evidence": REQUIRED. MUST list the specific pieces of evidence that heavily influenced your decision (array of text)
+- "key_evidence": REQUIRED. MUST list the specific pieces of evidence that heavily influences your decision (array of text)
+- "supporting_evidence": OPTIONAL. List of evidence that heavily supports the claim. (array of text)
+- "contradictory_evidence": OPTIONAL. List of evidence that heavily contradicts the claim. (array of text)
 - "additional_queries": OPTIONAL. Include ONLY if there is a CRITICAL information gap. It should be an array of all the extra queries you need to run to gather the missing information. (array of text)
+- "reason": REQUIRED. MUST provide your detailed thought process and reasoning starting with "Ok so based on all the information available and considering all the context I'm going to step by step reason about the claim... let's see" and it must also explanation and provide evaluation for each possible decision on why they would or wouldn't be the right decision
+- "decision": REQUIRED. MUST be your final verdict out of "true|false|depends|inconclusive|too_early" (text)
+- "confidence": REQUIRED. MUST be a number between 0-100 on how confident you are in your decision (number)
 
 Notes:
 - Make your decision solely based on available evidence, not what you believe "should" be true
@@ -158,19 +162,20 @@ Your task is to take into consideration the information they gathered, their dec
 
 IMPORTANT: Date Verification
 Before making any decision, verify if the claim refers to future events:
-1. The current date is: ${currentDate}
-2. If the claim relies on ANYTHING in the future (after the current date), you MUST use the "too_early" decision
-3. Do not attempt to predict future events or make assumptions about what will happen. Laws can change, people can be replaced, many things can happen.
+- The current date is: ${currentDate}
+- If the claim relies on ANYTHING in the future (after the current date), you MUST use the "too_early" decision
+- Do not attempt to predict future events or make assumptions about what will happen. Laws can change, people can be replaced, many things can happen.
     - Example: "Donald Trump can't run for president again" should be "too_early" even if he has already served two terms since laws can change. However "Based on current laws, Donald Trump can't run for president again" would be "true"
 
 ## Analytical Framework
-1. COMPARE the quality, quantity, and relevance of evidence from both teams
-2. IDENTIFY any biases in either team's approach or interpretation
-3. EVALUATE the logical consistency of each team's reasoning
-4. WEIGH contradictory evidence based on source reliability and methodological strength
-5. CONSIDER what information might still be missing from both analyses
-6. DETERMINE if either team overlooked important context or nuance
-7. CHECK if the claim references a future date or event that hasn't occurred yet
+- COMPARE the quality, quantity, and relevance of evidence from both teams
+- IDENTIFY any biases in either team's approach or interpretation
+- EVALUATE the logical consistency of each team's reasoning
+- WEIGH contradictory evidence based on source reliability and methodological strength
+- CONSIDER what information might still be missing from both analyses
+- DETERMINE if either team overlooked important context or nuance
+- CHECK if the claim references a future date or event that hasn't occurred yet
+- If something is contradictory, seems fabricated, or fake do extra research about it and do not make assumptions
 
 ## Decision Criteria (Apply Rigorously)
 "True" - The claim is DEMONSTRABLY true based on preponderance of high-quality evidence with minimal credible contradicting evidence.
@@ -198,13 +203,13 @@ Reasoning: ${redTeamDecision.reason}
 
 # Instructions
 Your response must be ONLY a JSON object with the following fields:
-- "decision": REQUIRED. MUST be one of "true|false|depends|inconclusive|too_early" (text)
-- "reason": REQUIRED. MUST provide your detailed reasoning as to why you made that decision (text)
-- "confidence": REQUIRED. MUST be a number between 0-100 (number)
-- "key_evidence": REQUIRED. MUST list the specific pieces of evidence that heavily influenced your decision (array of text)
+- "key_evidence": REQUIRED. MUST list the specific pieces of evidence that heavily influences your decision (array of text)
 - "supporting_evidence": OPTIONAL. List of evidence that heavily supports the claim. (array of text)
 - "contradictory_evidence": OPTIONAL. List of evidence that heavily contradicts the claim. (array of text)
 - "information_gaps": OPTIONAL. List of missing information that would help resolve the claim. (array of text)
+- "reason": REQUIRED. MUST provide your detailed thought process and reasoning starting with "Ok so based on all the information the teams have gathered and their decisions and considering their bias I'm going to step by step reason about the claim... let's see" and it must also explanation and provide evaluation for each possible decision on why they would or wouldn't be the right decision
+- "decision": REQUIRED. MUST be your final verdict out of "true|false|depends|inconclusive|too_early" (text)
+- "confidence": REQUIRED. MUST be a number between 0-100 on how confident you are in your decision (number)
 `;
 }
 
@@ -223,6 +228,10 @@ PRESERVE all the important context, details, nuances and information that they'l
 Take their queries into account when synthesizing the findings so you can give them the most relevant information that they need and were looking for.
 DO NOT ADD ANYTHING TO THE SYNTHESIS THAT IS NOT PRESENT IN THE FINDINGS.
 The findings include the url of the source, so if you recognize a source that is usually a spreader of misinformation or for parodies or clickbait ignore its findings in the final synthesis.
+When synthesizing prioritize authoritative sources (academia, government, expert consensus, official bodies, etc.)
+You are the filter that will help them find the most accurate, reliable, high quality information and remove fabrications, clickbait, misinformation, etc.
+Make sure to include the source for the information you are synthesizing.
+Example: "source X says Y which is corroborated by Z as well but contradicted by W because W says ..."
 
 # Queries + Findings
 {{queriesResult}}
