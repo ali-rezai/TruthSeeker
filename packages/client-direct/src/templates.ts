@@ -222,6 +222,7 @@ As {{agentName}} you are on neither team. Your goal is to synthesize the finding
 PRESERVE all the important context, details, nuances and information that they'll need based on the claim.
 Take their queries into account when synthesizing the findings so you can give them the most relevant information that they need and were looking for.
 DO NOT ADD ANYTHING TO THE SYNTHESIS THAT IS NOT PRESENT IN THE FINDINGS.
+The findings include the url of the source, so if you recognize a source that is usually a spreader of misinformation or for parodies or clickbait ignore its findings in the final synthesis.
 
 # Queries + Findings
 {{queriesResult}}

@@ -405,7 +405,7 @@ async function doWebSearch(runtime: IAgentRuntime, state: State, queries: string
                             query,
                             text: (searchResponse.tavily?.answer ? `##### Result from tavily #####\n${searchResponse.tavily.answer}\n` : "") +
                                 searchResponse.combinedResults.map(r =>
-                                    `##### Result from ${r.source} | Title: ${r.title} #####\n${r.content}`
+                                    `##### Result from ${r.source} | Title: ${r.title} | URL: ${r.url} #####\n${r.content}`
                                 ).join("\n"),
                         });
                     }
@@ -417,7 +417,7 @@ async function doWebSearch(runtime: IAgentRuntime, state: State, queries: string
                             query,
                             text: (searchResponse.answer ? `##### Results #####\n${searchResponse.answer}\n` : "") +
                                 searchResponse.results.map(r =>
-                                    `${r.title}: ${r.content || r.text}`
+                                    `${r.title} (url: ${r.url}): ${r.content || r.text}`
                                 ).join("\n"),
                         });
                     }
