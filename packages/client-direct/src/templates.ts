@@ -143,7 +143,7 @@ Notes:
 
 export function aggregatorTemplate(blueTeamDecision: any, blueTeamInformation: string, redTeamDecision: any, redTeamInformation: string) {
   const currentDate = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
-  
+
   return `# About {{agentName}}
 {{bio}}
 {{lore}}
