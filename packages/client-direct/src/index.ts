@@ -384,6 +384,10 @@ async function doWebSearch(runtime: IAgentRuntime, state: State, queries: string
                 const searchResponse = await webSearchService.search(query, {
                     tavily: {
                         includeAnswer: true,
+                    },
+                    twitter: {
+                        count: 5,
+                        mode: 'top'
                     }
                 });
 
@@ -407,6 +411,17 @@ async function doWebSearch(runtime: IAgentRuntime, state: State, queries: string
                                 searchResponse.combinedResults.map(r =>
                                     `##### Result from ${r.source} | Title: ${r.title} | URL: ${r.url} #####\n${r.content}`
                                 ).join("\n"),
+                        });
+                    }
+                    // Handle Twitter-specific results
+                    else if (searchResponse.provider === "twitter" && searchResponse.results?.length) {
+                        logMessage(team, `Got ${searchResponse.results.length} tweets for "${query}"`);
+
+                        resolve({
+                            query,
+                            text: searchResponse.results.map(tweet =>
+                                `##### Tweet from ${tweet.metadata.name} (@${tweet.metadata.username}) | Likes: ${tweet.metadata.likes} | Retweets: ${tweet.metadata.retweets} | URL: ${tweet.url} #####\n${tweet.content}`
+                            ).join("\n\n")
                         });
                     }
                     // Handle single provider results

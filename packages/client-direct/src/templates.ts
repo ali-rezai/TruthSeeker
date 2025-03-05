@@ -224,6 +224,11 @@ Take their queries into account when synthesizing the findings so you can give t
 DO NOT ADD ANYTHING TO THE SYNTHESIS THAT IS NOT PRESENT IN THE FINDINGS.
 The findings include the url of the source, so if you recognize a source that is usually a spreader of misinformation or for parodies or clickbait ignore its findings in the final synthesis.
 
+# Special Source Handling
+- For Twitter results: Consider the credibility of the account, verification status, and engagement metrics. Tweets from official accounts or verified experts may be more reliable than random users.
+- For news sources: Consider the publication's reputation, whether it's mainstream or alternative, and if it has a known political bias.
+- For academic sources: These are generally more reliable for factual information, especially peer-reviewed content.
+
 # Queries + Findings
 {{queriesResult}}
 

@@ -11,6 +11,7 @@ export enum SearchProvider {
     EXA = "exa",
     SERPER = "serper",
     PERPLEXITY = "perplexity",
+    TWITTER = "twitter",
     ALL = "all"
 }
 
@@ -427,6 +428,61 @@ export class WebSearchService extends Service {
             }
         }
 
+        // Initialize Twitter provider
+        const twitterUsername = runtime.getSetting("TWITTER_USERNAME") as string;
+        const twitterPassword = runtime.getSetting("TWITTER_PASSWORD") as string;
+        const twitterEmail = runtime.getSetting("TWITTER_EMAIL") as string;
+        const twitterApiKey = runtime.getSetting("TWITTER_API_KEY") as string;
+        const twitterApiSecretKey = runtime.getSetting("TWITTER_API_SECRET_KEY") as string;
+        const twitterAccessToken = runtime.getSetting("TWITTER_ACCESS_TOKEN") as string;
+        const twitterAccessTokenSecret = runtime.getSetting("TWITTER_ACCESS_TOKEN_SECRET") as string;
+
+        // Log the Twitter credentials (without revealing sensitive information)
+        elizaLogger.debug(`Twitter credentials: Username: ${!!twitterUsername}, Password: ${!!twitterPassword}, Email: ${!!twitterEmail}, API Key: ${!!twitterApiKey}, API Secret: ${!!twitterApiSecretKey}, Access Token: ${!!twitterAccessToken}, Access Token Secret: ${!!twitterAccessTokenSecret}`);
+
+        if (twitterUsername && twitterPassword) {
+            try {
+                elizaLogger.debug("Attempting to import Twitter provider...");
+                const { TwitterProvider } = await import('./twitter');
+                elizaLogger.debug("Twitter provider imported successfully");
+
+                const twitterProvider = new TwitterProvider(
+                    twitterUsername,
+                    twitterPassword,
+                    twitterEmail,
+                    twitterApiKey,
+                    twitterApiSecretKey,
+                    twitterAccessToken,
+                    twitterAccessTokenSecret
+                );
+                elizaLogger.debug("Twitter provider instance created");
+
+                // Register the provider after it's authenticated
+                setTimeout(async () => {
+                    try {
+                        elizaLogger.debug("Attempting to authenticate Twitter provider...");
+                        await twitterProvider.authenticate();
+                        elizaLogger.debug("Twitter provider authenticated successfully");
+
+                        if (twitterProvider.isAvailable()) {
+                            this.providers.set(SearchProvider.TWITTER, twitterProvider);
+                            elizaLogger.info("Twitter provider registered successfully");
+                        } else {
+                            elizaLogger.warn("Twitter provider authentication succeeded but isAvailable() returned false");
+                        }
+                    } catch (error) {
+                        elizaLogger.error("Failed to authenticate Twitter provider:", error);
+                    }
+                }, 1000); // Give it 1 second to authenticate
+            } catch (error) {
+                elizaLogger.error("Error initializing Twitter provider:", error);
+                if (error instanceof Error) {
+                    elizaLogger.error("Error message:", error.message);
+                    elizaLogger.error("Error stack:", error.stack);
+                }
+            }
+        }
+
         /* Comment out Serper.dev provider initialization
         // Initialize Serper.dev provider
         const serperApiKey = runtime.getSetting("SERPER_API_KEY") as string;
@@ -561,6 +617,14 @@ export class WebSearchService extends Service {
         options?: any,
     ): Promise<any> {
         return this.search(query, { ...options, provider: SearchProvider.SERPER });
+    }
+
+    // Dedicated method for Twitter search
+    async searchTwitter(
+        query: string,
+        options?: any,
+    ): Promise<any> {
+        return this.search(query, { ...options, provider: SearchProvider.TWITTER });
     }
 }
 

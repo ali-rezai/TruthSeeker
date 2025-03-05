@@ -2,8 +2,23 @@ import { elizaLogger } from "@elizaos/core";
 import { Service, ServiceType, type IAgentRuntime } from "@elizaos/core";
 import { ISearchProvider, SearchProvider } from "./search";
 
-// Import the Twitter client library
-const { Scraper, SearchMode } = require('agent-twitter-client');
+// Import the Twitter client library using dynamic import
+// We'll use a workaround to import the CommonJS module in an ES module context
+let Scraper, SearchMode;
+
+// This function will be called to initialize the imports
+async function initializeImports() {
+    try {
+        // Use dynamic import for CommonJS modules
+        const twitterClient = await import('agent-twitter-client');
+        Scraper = twitterClient.Scraper;
+        SearchMode = twitterClient.SearchMode;
+        return true;
+    } catch (error) {
+        elizaLogger.error("Failed to import Twitter client:", error);
+        return false;
+    }
+}
 
 // Twitter search provider implementation
 export class TwitterProvider implements ISearchProvider {
@@ -11,6 +26,7 @@ export class TwitterProvider implements ISearchProvider {
     private scraper: any = null;
     private isAuthenticated = false;
     private rateLimiter: any = null; // You can implement a rate limiter similar to other providers
+    private importsInitialized = false;
 
     constructor(
         private username: string,
@@ -26,17 +42,35 @@ export class TwitterProvider implements ISearchProvider {
             return;
         }
 
-        this.scraper = new Scraper();
-        elizaLogger.info("Initialized Twitter search provider");
+        // Initialize imports and then create the scraper
+        this.initializeProvider();
+    }
 
-        // Authenticate immediately
-        this.authenticate().catch(error => {
-            elizaLogger.error("Failed to authenticate with Twitter:", error);
-        });
+    private async initializeProvider() {
+        try {
+            this.importsInitialized = await initializeImports();
+
+            if (this.importsInitialized && Scraper) {
+                this.scraper = new Scraper();
+                elizaLogger.info("Initialized Twitter search provider");
+            } else {
+                elizaLogger.error("Failed to initialize Twitter provider: imports not available");
+            }
+        } catch (error) {
+            elizaLogger.error("Error initializing Twitter provider:", error);
+        }
     }
 
     async authenticate() {
         if (this.isAuthenticated) return;
+
+        if (!this.importsInitialized) {
+            await this.initializeProvider();
+        }
+
+        if (!this.scraper) {
+            throw new Error("Twitter scraper not initialized");
+        }
 
         try {
             // Check for existing cookies first
@@ -69,7 +103,7 @@ export class TwitterProvider implements ISearchProvider {
         }
     }
 
-    isAvailable(): boolean {
+    isAvailable() {
         return !!this.scraper && this.isAuthenticated;
     }
 
@@ -89,7 +123,7 @@ export class TwitterProvider implements ISearchProvider {
         };
     }
 
-    async search(query: string, options?: any): Promise<any> {
+    async search(query: string, options: any = {}) {
         if (!this.isAvailable()) {
             // Try to authenticate if not already
             try {
@@ -103,7 +137,7 @@ export class TwitterProvider implements ISearchProvider {
             elizaLogger.debug(`Executing Twitter search for: "${query}"`);
 
             const count = options?.twitter?.count || 10;
-            const mode = options?.twitter?.mode || SearchMode.Latest;
+            const mode = options?.twitter?.mode || SearchMode.Top;
             const offset = options?.twitter?.offset || 0;
 
             // Get search results (which is an iterator)
@@ -164,6 +198,7 @@ export class TwitterProvider implements ISearchProvider {
                     date: tweet.date
                 }
             }));
+            console.log(formattedResults);
 
             elizaLogger.debug(`Twitter search completed for: "${query}"`);
 
