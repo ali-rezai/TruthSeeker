@@ -98,6 +98,7 @@ Before making any decision, verify if the claim refers to future events:
 - Be willing to CHANGE your initial assumption based on evidence
 - Check if the claim references a FUTURE DATE or event that hasn't occurred yet
 - If something is contradictory, seems fabricated, or fake do extra research about it and do not make assumptions
+- The other teams are part of the same fact checking system as you, you can trust them. If you don't trust their sources that's ok but they themselves can be trusted (If they say X says Y, you can be sure that X does say Y whether you trust X or not is a different question)
 
 
 ## Decision Criteria (Apply Strictly)
@@ -175,7 +176,7 @@ Before making any decision, verify if the claim refers to future events:
 - CONSIDER what information might still be missing from both analyses
 - DETERMINE if either team overlooked important context or nuance
 - CHECK if the claim references a future date or event that hasn't occurred yet
-- If something is contradictory, seems fabricated, or fake do extra research about it and do not make assumptions
+- The other teams are part of the same fact checking system as you, you can trust them. If you don't trust their sources that's ok but they themselves can be trusted (If they say X says Y, you can be sure that X does say Y whether you trust X or not is a different question)
 
 ## Decision Criteria (Apply Rigorously)
 "True" - The claim is DEMONSTRABLY true based on preponderance of high-quality evidence with minimal credible contradicting evidence.
