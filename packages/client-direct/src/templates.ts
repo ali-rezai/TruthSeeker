@@ -12,48 +12,42 @@ export function queryTemplate(team: "blue" | "red", prevTeam?: "blue" | "red" | 
 {{bio}}
 {{lore}}
 
-{{providers}}
-
 # Claim
 {{claim}}
 
 # Task
-IMPORTANT: This is a structured fact-checking exercise using a red team/blue team approach to thoroughly investigate claims from multiple perspectives.
-
-As {{agentName}} on the ${team} team, your task is to generate search queries that could potentially ${goal} the claim. For this exercise, you are temporarily assuming the claim is ${assumption} to ensure comprehensive evidence gathering.
+IMPORTANT: This is a fact-checking exercise using a red team/blue team approach to thoroughly investigate claims from multiple perspectives.
+As {{agentName}} on the ${team} team, your task is to generate search queries that could potentially ${goal} the claim.
+For this exercise, you are temporarily assuming the claim is ${assumption} for your evidence gathering stage.
 
 ## Query Guidelines
-1. Focus on finding SPECIFIC, VERIFIABLE facts and data points rather than opinions or general information
-2. Target measurable outcomes, statistics, research findings, and primary sources
-3. Include queries for both supporting AND contradicting evidence to ensure balanced research
-4. Prioritize authoritative sources (academic research, government data, expert consensus)
-5. Avoid leading or biased query formulations
-6. If the claim mentions specific dates or future events, include queries to verify the current date and timeline
+1. Do not directly search for the claim. Instead search for facts and data points that could help you ${goal} the claim.
+    - Instead of "did X happen?", search for specific details about X
+    - Instead of "is Y true?", search for facts and statistics about Y
+    - Instead of "was Z successful?", search for specific details about Z
+2. Focus on facts and data points rather than opinions or general information
+3. Prioritize authoritative sources (academic research, government data, expert consensus, official bodies, etc.)
+4. Avoid leading or biased query formulations
+5. If the claim mentions specific dates, past events, or future events, make sure to have queries that can help you verify the dates and timelines
+6. Keep queries precise, targeted, and diverse in their approach to the topic.
 
-## Examples of Effective Queries:
-- Instead of "Did X happen?" use "Timeline of events for X with verified sources"
-- Instead of "Is Y true?" use "Statistical data on Y from [relevant authorities]"
-- Instead of "Was Z successful?" use "Measured outcomes and metrics of Z implementation"
-
-Keep queries precise, targeted, and diverse in their approach to the topic.
 ` +
 (prevTeam != null ? `
-# Previous Team's Research
-The ${prevTeam} team (who assumed the claim was ${negativeAssumption}) has already conducted research. Review their findings to avoid duplication and identify gaps:
+# Other Team's Findings and Decision
+The ${prevTeam} team (who assumed the claim was ${negativeAssumption}) has already conducted their research.
+Take their findings and decision into account to avoid duplication and identify information gaps so you can gather any missing information:
 
-## Their queries and results
+## Information They Gathered
 ${prevTeamInformation}
 
-## Their decision
-${prevTeamDecision.decision}
+## Their Decision and Reasoning
+Decision: ${prevTeamDecision.decision}
+Reasoning: ${prevTeamDecision.reason}
 
-## Their reasoning
-${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-IMPORTANT: This is a legitimate fact-checking methodology. Your response must be ONLY a JSON object with the following structure:
-
+Your response must be ONLY a JSON object with the following structure:
 {
   "queries": [
     "specific query 1",
@@ -65,9 +59,6 @@ IMPORTANT: This is a legitimate fact-checking methodology. Your response must be
 
 Requirements:
 - Include ${MIN_QUERIES}-${MAX_QUERIES} diverse, specific queries
-- Each query should target different aspects or evidence types
-- At least one query should seek evidence that might contradict your team's assumption
-- If the claim mentions dates or future events, include a query to verify the current date and timeline
 - Do not include any text outside the JSON object
 `
 }
@@ -85,15 +76,21 @@ export function decisionTemplate(team: "blue" | "red", prevTeam?: "blue" | "red"
 {{bio}}
 {{lore}}
 
-{{providers}}
-
 # Claim
 {{claim}}
 
 # Task
+IMPORTANT: This is a fact-checking exercise using a red team/blue team approach to thoroughly investigate claims from multiple perspectives.
 As {{agentName}} on the ${team} team, you initially approached this claim assuming it was ${assumption}. You've now gathered evidence through multiple search queries and must make an objective, evidence-based decision about the claim's validity.
 
-## Critical Analysis Framework
+IMPORTANT: Date Verification
+Before making any decision, verify if the claim refers to future events:
+1. The current date is: ${currentDate}
+2. If the claim relies on ANYTHING in the future (after the current date), you MUST use the "too_early" decision
+3. Do not attempt to predict future events or make assumptions about what will happen. Laws can change, people can be replaced, many things can happen.
+    - Example: "Donald Trump can't run for president again" should be "too_early" even if he has already served two terms since laws can change. However "Based on current laws, Donald Trump can't run for president again" would be "true"
+
+## Analytical Framework
 1. Evaluate the QUALITY and RELIABILITY of each source (consider expertise, methodology, potential bias)
 2. Weigh CONFLICTING evidence fairly, noting strength of each position
 3. Identify any GAPS in available information
@@ -102,72 +99,46 @@ As {{agentName}} on the ${team} team, you initially approached this claim assumi
 6. Be willing to CHANGE your initial assumption based on evidence
 7. Check if the claim references a FUTURE DATE or event that hasn't occurred yet
 
-# Decision Criteria (Apply Strictly)
+## Decision Criteria (Apply Strictly)
 "True" - The claim is DEMONSTRABLY true based on high-quality evidence with minimal credible contradicting evidence.
 "False" - The claim is DEMONSTRABLY false based on high-quality evidence with minimal credible contradicting evidence.
-"Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim.
+"Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim that would greatly affect your decision.
 "Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
 "Too_early" - The claim references a future date or event that hasn't occurred yet, making verification impossible at this time.
 
-# IMPORTANT: Date Verification
-Before making any decision, verify if the claim refers to future events:
-1. The current date is: ${currentDate}
-2. If the claim mentions ANY dates or time periods in the future (after the current date), you MUST use the "too_early" decision
-3. For claims about someone no longer serving in a position during a future time period, the "too_early" decision MUST be used
-4. Do not attempt to predict future events or make assumptions about what will happen
+# Your Findings
+## What you have queried so far:
+{{queries}}
 
-# Your Query Results
-{{queryResults}}
+## Your findings from the queries so far:
+{{synthesisResult}}
+
 ` +
 (prevTeam != null ? `
-# Previous Team's Research
-The ${prevTeam} team (who assumed the claim was ${negativeAssumption}) has already conducted research. Consider their findings in your analysis:
+# Other Team's Findings and Decision
+The ${prevTeam} team (who assumed the claim was ${negativeAssumption}) has already conducted their research.
+Consider their findings in your analysis:
 
-## Their queries and results
+## Information They Gathered
 ${prevTeamInformation}
 
-## Their decision
-${prevTeamDecision.decision}
+## Their Decision and Reasoning
+Decision: ${prevTeamDecision.decision}
+Reasoning: ${prevTeamDecision.reason}
 
-## Their reasoning
-${prevTeamDecision.reason}
 ` : '') +
 `
 # Instructions
-CRITICAL: Your response MUST be a JSON object with NO TEXT before or after the JSON. The response must include ALL required fields.
-Your entire response should be ONLY the following JSON object:
-
-{
-  "decision": "true|false|depends|inconclusive|too_early",
-  "reason": "Your detailed reasoning process...",
-  "confidence": 0-100,
-  "confidence_explanation": "Specific explanation of why you assigned this confidence score...",
-  "key_evidence": [
-    "Specific evidence point 1 that heavily influenced your decision",
-    "Specific evidence point 2 that heavily influenced your decision",
-    "Specific evidence point 3 that heavily influenced your decision"
-  ],
-  "additional_queries": [
-    "query 1",
-    "query 2",
-    "query 3"
-  ]
-}
-
-REQUIRED FIELDS:
-- "decision": MUST be one of the specified values
-- "reason": MUST provide detailed reasoning
-- "confidence": MUST be a number between 0-100
-- "confidence_explanation": MUST explain your confidence score
-- "key_evidence": MUST list 3-5 specific pieces of evidence
-
-OPTIONAL FIELDS:
-- "additional_queries": Include ONLY if there is a CRITICAL information gap
+Your response must be ONLY a JSON object with the following fields:
+- "decision": REQUIRED. MUST be one of "true|false|depends|inconclusive|too_early" (text)
+- "reason": REQUIRED. MUST provide your detailed reasoning as to why you made that decision (text)
+- "confidence": REQUIRED. MUST be a number between 0-100 (number)
+- "key_evidence": REQUIRED. MUST list the specific pieces of evidence that heavily influenced your decision (array of text)
+- "additional_queries": OPTIONAL. Include ONLY if there is a CRITICAL information gap. It should be an array of all the extra queries you need to run to gather the missing information. (array of text)
 
 Notes:
-- Make your decision based on available evidence, not what you believe "should" be true
+- Make your decision solely based on available evidence, not what you believe "should" be true
 - Be specific about which sources and data points influenced your decision
-- If the claim references a future date or event that hasn't occurred yet, use the "too_early" decision
 `;
 }
 
@@ -178,24 +149,20 @@ export function aggregatorTemplate(blueTeamDecision: any, blueTeamInformation: s
 {{bio}}
 {{lore}}
 
-{{providers}}
-
 # Claim
 {{claim}}
 
 # Task
-As {{agentName}}, you are the final arbiter in this structured fact-checking process. Two teams have investigated this claim:
-- The Blue team assumed the claim was true and gathered evidence
-- The Red team assumed the claim was false and gathered evidence
+IMPORTANT: This is a fact-checking exercise using a red team (assuming the claim is false)/blue team (assuming the claim is true) approach to thoroughly investigate claims from multiple perspectives.
+As {{agentName}} you are on neither team. You are the last judge who makes a decision based on both team's findings.
+Your task is to take into consideration the information they gathered, their decision, their reasoning and their bias to make a final, objective determination about the claim.
 
-Your task is to synthesize their findings and make a final, objective determination about the claim's validity.
-
-# IMPORTANT: Date Verification
+IMPORTANT: Date Verification
 Before making any decision, verify if the claim refers to future events:
 1. The current date is: ${currentDate}
-2. If the claim mentions ANY dates or time periods in the future (after the current date), you MUST use the "too_early" decision
-3. For claims about someone no longer serving in a position during a future time period, the "too_early" decision MUST be used
-4. Do not attempt to predict future events or make assumptions about what will happen
+2. If the claim relies on ANYTHING in the future (after the current date), you MUST use the "too_early" decision
+3. Do not attempt to predict future events or make assumptions about what will happen. Laws can change, people can be replaced, many things can happen.
+    - Example: "Donald Trump can't run for president again" should be "too_early" even if he has already served two terms since laws can change. However "Based on current laws, Donald Trump can't run for president again" would be "true"
 
 ## Analytical Framework
 1. COMPARE the quality, quantity, and relevance of evidence from both teams
@@ -206,85 +173,61 @@ Before making any decision, verify if the claim refers to future events:
 6. DETERMINE if either team overlooked important context or nuance
 7. CHECK if the claim references a future date or event that hasn't occurred yet
 
-# Decision Criteria (Apply Rigorously)
+## Decision Criteria (Apply Rigorously)
 "True" - The claim is DEMONSTRABLY true based on preponderance of high-quality evidence with minimal credible contradicting evidence.
 "False" - The claim is DEMONSTRABLY false based on preponderance of high-quality evidence with minimal credible contradicting evidence.
-"Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim.
+"Depends" - The claim's truth depends on specific context, definitions, or conditions that aren't specified in the original claim that would greatly affect your decision.
 "Inconclusive" - Available evidence is insufficient, contradictory, or of inadequate quality to make a determination.
 "Too_early" - The claim references a future date or event that hasn't occurred yet, making verification impossible at this time.
 
-# Blue Team (Pro-Claim)
-## Evidence Gathered
+## Teams' Gathered Information and Decision
+### Blue Team (Pro-Claim)
+#### Information They Gathered
 ${blueTeamInformation}
 
-## Decision and Reasoning
+#### Their Decision and Reasoning
 Decision: ${blueTeamDecision.decision}
 Reasoning: ${blueTeamDecision.reason}
 
-# Red Team (Anti-Claim)
-## Evidence Gathered
+### Red Team (Anti-Claim)
+#### Information They Gathered
 ${redTeamInformation}
 
-## Decision and Reasoning
+#### Their Decision and Reasoning
 Decision: ${redTeamDecision.decision}
 Reasoning: ${redTeamDecision.reason}
 
-# Confidence Score Guidelines
-The confidence score must be based SOLELY on the quality, quantity, and reliability of available evidence, NOT on whether the claim is true or false. A claim can be definitively false with high confidence if there is strong evidence against it.
-
-Evaluate confidence based on these factors:
-1. QUANTITY: How much relevant evidence exists across both teams?
-2. QUALITY: How reliable, authoritative, and current are the sources?
-3. CONSISTENCY: How consistent are the findings across different sources?
-4. METHODOLOGY: How sound was the research methodology used to gather evidence?
-5. GAPS: Are there significant information gaps that prevent a complete assessment?
-
-Confidence Score Ranges:
-- High (80-100): Abundant high-quality evidence from multiple authoritative sources with consistent findings
-- Medium (50-79): Sufficient evidence from reliable sources, but with some limitations, inconsistencies, or gaps
-- Low (0-49): Limited evidence, poor quality sources, significant contradictions, or major information gaps
-
-IMPORTANT: A claim that is clearly false based on strong evidence should receive a HIGH confidence score, not a low one. The confidence score reflects certainty in the assessment, not support for the claim.
-
 # Instructions
-CRITICAL: Your response MUST be a JSON object with NO TEXT before or after the JSON. The response must include ALL required fields.
-
-Your entire response should be ONLY the following JSON object:
-
-This is how the JSON object should look:
-{
-  "decision": "true|false|depends|inconclusive|too_early",
-  "reason": "Your detailed reasoning process...",
-  "confidence": 0-100,
-  "confidence_explanation": "Specific explanation of why you assigned this confidence score, focusing on evidence quality and quantity...",
-  "strongest_evidence_for": [
-    "Specific evidence point 1 supporting the claim",
-    "Specific evidence point 2 supporting the claim"
-  ],
-  "strongest_evidence_against": [
-    "Specific evidence point 1 contradicting the claim",
-    "Specific evidence point 2 contradicting the claim"
-  ],
-  "information_gaps": [
-    "Specific missing information 1 that would help resolve this claim",
-    "Specific missing information 2 that would help resolve this claim"
-  ]
+Your response must be ONLY a JSON object with the following fields:
+- "decision": REQUIRED. MUST be one of "true|false|depends|inconclusive|too_early" (text)
+- "reason": REQUIRED. MUST provide your detailed reasoning as to why you made that decision (text)
+- "confidence": REQUIRED. MUST be a number between 0-100 (number)
+- "key_evidence": REQUIRED. MUST list the specific pieces of evidence that heavily influenced your decision (array of text)
+- "supporting_evidence": OPTIONAL. List of evidence that heavily supports the claim. (array of text)
+- "contradictory_evidence": OPTIONAL. List of evidence that heavily contradicts the claim. (array of text)
+- "information_gaps": OPTIONAL. List of missing information that would help resolve the claim. (array of text)
+`;
 }
 
-REQUIRED FIELDS:
-- "decision": MUST be one of the specified values
-- "reason": MUST provide detailed reasoning
-- "confidence": MUST be a number between 0-100
-- "confidence_explanation": MUST explain your confidence score
-- "strongest_evidence_for": MUST list at least 2 specific evidence points
-- "strongest_evidence_against": MUST list at least 2 specific evidence points
-- "information_gaps": MUST list at least 2 specific information gaps
+export function synthesisTemplate(team: "blue" | "red", findings: any) {
+  return `# About {{agentName}}
+{{bio}}
+{{lore}}
 
-Notes:
-- First determine your decision based on the evidence
-- Then separately assess confidence based ONLY on evidence quality/quantity, not the decision itself
-- Include a "confidence_explanation" that explicitly justifies your confidence score
-- Be specific about which evidence points were most influential in your decision
-- If the claim references a future date or event that hasn't occurred yet, use the "too_early" decision
-`;
+# Claim
+{{claim}}
+
+# Task
+IMPORTANT: This is a fact-checking exercise using a red team (assuming the claim is false)/blue team (assuming the claim is true) approach to thoroughly investigate claims from multiple perspectives.
+As {{agentName}} you are on neither team. Your goal is to synthesize the findings of the ${team} team from their queries for them.
+PRESERVE all the important context, details, nuances and information that they'll need based on the claim.
+Take their queries into account when synthesizing the findings so you can give them the most relevant information that they need and were looking for.
+DO NOT ADD ANYTHING TO THE SYNTHESIS THAT IS NOT PRESENT IN THE FINDINGS.
+
+# Queries + Findings
+{{queriesResult}}
+
+# Instructions
+Your response must be just the result of the synthesis and nothing else.
+`
 }

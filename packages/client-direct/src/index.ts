@@ -2,11 +2,13 @@ import {
     composeContext,
     elizaLogger,
     generateMessageResponse,
+    generateText,
     ModelClass,
     ServiceType,
     settings,
     State,
     stringToUuid,
+    UUID,
     type Client,
     type IAgentRuntime,
     type Plugin,
@@ -16,7 +18,7 @@ import cors from "cors";
 import express from "express";
 import { createApiRouter } from "./api.ts";
 import { createVerifiableLogApiRouter } from "./verifiable-log-api.ts";
-import { aggregatorTemplate, decisionTemplate, queryTemplate } from "./templates.ts";
+import { aggregatorTemplate, decisionTemplate, queryTemplate, synthesisTemplate } from "./templates.ts";
 import { ethers, EventLog } from "ethers";
 
 import TaskRegistryJSON from "./TaskRegistry.json"
@@ -30,6 +32,10 @@ export class DirectClient {
     public startAgent: Function; // Store startAgent functor
     public loadCharacterTryPath: Function; // Store loadCharacterTryPath functor
     public jsonToCharacter: Function; // Store jsonToCharacter functor
+
+    runtime: IAgentRuntime;
+    userId: UUID;
+    roomId: UUID;
 
     constructor() {
         elizaLogger.log("DirectClient constructor");
@@ -47,67 +53,31 @@ export class DirectClient {
         this.app.use(apiLogRouter);
 
         this.app.post("/:agentId/verify-claim", async (req, res) => {
-            const agentId = req.params.agentId;
-            const roomId = stringToUuid("default-room");
-            const userId = stringToUuid("user");
             const claim = req.body.claim;
-
-            let runtime = this.agents.get(agentId);
-            if (!runtime) {
-                runtime = Array.from(this.agents.values()).find(
-                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
-                );
-            }
-
-            if (!runtime) {
-                res.status(404).send("Agent not found");
-                return;
-            }
-
-            await runtime.ensureConnection(userId, roomId, null, null, "direct");
-
-            const state = await runtime.composeState({
+            const state = await this.runtime.composeState({
                 content: { text: "" },
-                userId,
-                roomId,
-                agentId: runtime.agentId
+                userId: this.userId,
+                roomId: this.roomId,
+                agentId: this.runtime.agentId
             }, {
-                agentName: runtime.character.name,
+                agentName: this.runtime.character.name,
                 claim,
             })
 
-            const result = await blueRedAggregate(runtime, state);
-            const attestation = await generateAttestation(runtime, JSON.stringify(result));
+            const result = await blueRedAggregate(this.runtime, state);
+            const attestation = await generateAttestation(this.runtime, JSON.stringify(result));
             res.json({ attestation, result });
         })
 
         this.app.post("/:agentId/verify-claim-frontend", async (req, res) => {
-            const agentId = req.params.agentId;
-            const roomId = stringToUuid("default-room");
-            const userId = stringToUuid("user");
             const claim = req.body.claim;
-
-            let runtime = this.agents.get(agentId);
-            if (!runtime) {
-                runtime = Array.from(this.agents.values()).find(
-                    (a) => a.character.name.toLowerCase() === agentId.toLowerCase()
-                );
-            }
-
-            if (!runtime) {
-                res.status(404).send("Agent not found");
-                return;
-            }
-
-            await runtime.ensureConnection(userId, roomId, null, null, "direct");
-
-            const state = await runtime.composeState({
+            const state = await this.runtime.composeState({
                 content: { text: "" },
-                userId,
-                roomId,
-                agentId: runtime.agentId
+                userId: this.userId,
+                roomId: this.roomId,
+                agentId: this.runtime.agentId
             }, {
-                agentName: runtime.character.name,
+                agentName: this.runtime.character.name,
                 claim,
             })
 
@@ -115,7 +85,7 @@ export class DirectClient {
             const verificationId = stringToUuid(Date.now().toString());
             this.verifications.set(verificationId, {
                 state,
-                runtime,
+                runtime: this.runtime,
                 logs: [],
                 completed: false,
                 result: null,
@@ -161,7 +131,22 @@ export class DirectClient {
         this.agents.delete(runtime.agentId);
     }
 
-    public start(port: number) {
+    public async start(port: number) {
+        const runtime = Array.from(this.agents.values()).find(
+            (a) => a.character.name.toLowerCase() === "truthseeker"
+        );
+        if (!runtime) {
+            elizaLogger.error("Truthseeker runtime not found");
+            return;
+        }
+        const roomId = stringToUuid("default-room");
+        const userId = stringToUuid("user");
+        await runtime.ensureConnection(userId, roomId, null, null, "direct");
+
+        this.runtime = runtime;
+        this.userId = userId;
+        this.roomId = roomId;
+
         this.server = this.app.listen(port, () => {
             elizaLogger.success(
                 `REST API bound to 0.0.0.0:${port}. If running locally, access it at http://localhost:${port}.`
@@ -189,17 +174,13 @@ export class DirectClient {
         process.on("SIGTERM", gracefulShutdown);
         process.on("SIGINT", gracefulShutdown);
 
-        const runtime = Array.from(this.agents.values()).find(
-            (a) => a.character.name.toLowerCase() === "truthseeker"
-        );
-        if (!runtime) {
-            elizaLogger.error("Truthseeker runtime not found");
-            return;
-        }
         const rpcUrl = runtime.getSetting("TRUTHSEEKER_WS_RPC_URL");
         const privateKey = runtime.getSetting("TRUTHSEEKER_OPERATOR_PRIVATE_KEY");
         const contractAddress = runtime.getSetting("TRUTHSEEKER_TASK_CONTRACT_ADDRESS");
 
+        if (!rpcUrl || !privateKey || !contractAddress) {
+            return;
+        }
         const provider = new ethers.WebSocketProvider(rpcUrl);
         const wallet = new ethers.Wallet(privateKey, provider);
         const taskContract = new ethers.Contract(contractAddress, TaskRegistryABI, wallet);
@@ -287,9 +268,7 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
         template: queryTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
     });
 
-    // Print the query context
-    elizaLogger.info(`${team} team queryContext:`, JSON.stringify(queryContext, null, 2));
-    logMessage(team, `${team} team queryContext: ${JSON.stringify(queryContext)}`);
+    console.log(queryContext);
 
     const queries = (await generateMessageResponse({
         runtime: runtime,
@@ -309,11 +288,12 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
 
     // Get Results using all available providers
     logMessage(team, "Searching for information...");
-    const queryResults = await doWebSearch(queries, team, webSearchService, logMessage);
+    const synthesisResult = await doWebSearch(runtime, state, queries, team, webSearchService, logMessage);
     logMessage(team, `Completed ${team} team query searches`);
 
     // Reason
-    state["queryResults"] = queryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
+    state["queries"] = JSON.stringify(queries);
+    state["synthesisResult"] = synthesisResult;
 
     logMessage(team, `Starting ${team} team decision making process`);
     let decisionTries = 0;
@@ -325,9 +305,7 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
             template: decisionTemplate(team, prevTeamDecision ? (team == "blue" ? "red" : "blue") : null, prevTeamInformation, prevTeamDecision),
         });
 
-        // Print the decision context
-        elizaLogger.info(`${team} team decisionContext:`, JSON.stringify(decisionContext, null, 2));
-        logMessage(team, `${team} team decisionContext: ${JSON.stringify(decisionContext)}`);
+        console.log(decisionContext);
 
         // Use type assertion to bypass TypeScript error
         let rawResponse = await generateMessageResponse({
@@ -348,8 +326,9 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
 
         if (decision.additional_queries && (decision.additional_queries as string[]).length > 0) {
             logMessage(team, `${team} team decided to make additional queries: ${(decision.additional_queries as string[]).join(', ')}`);
-            const additionalQueryResults = await doWebSearch(decision.additional_queries as string[], team, webSearchService, logMessage);
-            state["queryResults"] += "\n" + additionalQueryResults.map(r => `## Query\n${r.query}\n## Result\n${r.text}\n\n`).join("\n");
+            const additionalSynthesisResult = await doWebSearch(runtime, state, decision.additional_queries as string[], team, webSearchService, logMessage);
+            state["queries"] += "\n" + JSON.stringify(decision.additional_queries);
+            state["synthesisResult"] += "\n" + additionalSynthesisResult;
         } else {
             break;
         }
@@ -359,7 +338,7 @@ async function doTeam(runtime: IAgentRuntime, state: State, team: "blue" | "red"
     logMessage(team, `${team} team decision completed`);
 
     // Update verification with the result
-    return { decision, information: state["queryResults"] as string };
+    return { decision, information: state["synthesisResult"] as string };
 }
 
 async function aggregateTeams(runtime: IAgentRuntime, state: State, blueTeamInformation: string, blueTeamDecision: any, redTeamInformation: string, redTeamDecision: any, logMessage: LogFunction = defaultLogFunction) {
@@ -370,9 +349,7 @@ async function aggregateTeams(runtime: IAgentRuntime, state: State, blueTeamInfo
         template: aggregatorTemplate(blueTeamDecision, blueTeamInformation, redTeamDecision, redTeamInformation),
     });
 
-    // Print the aggregator context
-    elizaLogger.info(`Aggregator context:`, JSON.stringify(aggregatorContext, null, 2));
-    logMessage("final", `Aggregator context: ${JSON.stringify(aggregatorContext)}`);
+    console.log(aggregatorContext);
 
     logMessage("final", "Processing team decisions and evidence...");
     let rawResponse = await generateMessageResponse({
@@ -396,7 +373,7 @@ async function aggregateTeams(runtime: IAgentRuntime, state: State, blueTeamInfo
     return aggregationResult;
 }
 
-async function doWebSearch(queries: string[], team: "blue" | "red", webSearchService: any, logMessage: LogFunction = defaultLogFunction): Promise<{query: string, text: string}[]> {
+async function doWebSearch(runtime: IAgentRuntime, state: State, queries: string[], team: "blue" | "red", webSearchService: any, logMessage: LogFunction = defaultLogFunction): Promise<{query: string, text: string}[]> {
     let promises = [];
     for (const query of queries) {
         promises.push(new Promise(async (resolve, reject) => {
@@ -428,7 +405,7 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
                             query,
                             text: (searchResponse.tavily?.answer ? `##### Result from tavily #####\n${searchResponse.tavily.answer}\n` : "") +
                                 searchResponse.combinedResults.map(r =>
-                                    `##### Result from ${r.source} | Title: ${r.title} #####\n${r.content?.substring(0, 500)}...`
+                                    `##### Result from ${r.source} | Title: ${r.title} #####\n${r.content}`
                                 ).join("\n"),
                         });
                     }
@@ -438,10 +415,10 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
 
                         resolve({
                             query,
-                            text: (searchResponse.answer ? `##### Results #####\n${searchResponse.answer}\n\n` : "") +
+                            text: (searchResponse.answer ? `##### Results #####\n${searchResponse.answer}\n` : "") +
                                 searchResponse.results.map(r =>
-                                    `${r.title}: ${r.content?.substring(0, 500) || r.text?.substring(0, 500)}...`
-                                ).join("\n\n"),
+                                    `${r.title}: ${r.content || r.text}`
+                                ).join("\n"),
                         });
                     }
                     else {
@@ -470,10 +447,30 @@ async function doWebSearch(queries: string[], team: "blue" | "red", webSearchSer
             }
         }));
     }
-    return await Promise.all(promises);
+    const results = await Promise.all(promises);
+    const queriesResult = results.map(r => `## Query\n${r.query}\n## Result\n${r.text}`).join('\n\n\n\n');
+    state["queriesResult"] = queriesResult;
+    const synthesisContext = composeContext({
+        state,
+        template: synthesisTemplate(team, queriesResult)
+    });
+
+    console.log(synthesisContext);
+
+    const synthesisResult = await generateText({
+        runtime: runtime,
+        context: synthesisContext,
+        modelClass: ModelClass.LARGE,
+    }) as any;
+    return synthesisResult;
 }
 
 async function generateAttestation(runtime: IAgentRuntime, info: string) {
+    if (runtime.getSetting("TEE_MODE") == "LOCAL") {
+        return {
+            quote: "0x"
+        };
+    }
     const remoteAttestationProvider = runtime.getService("TEE" as ServiceType) as any;
     const attestation = await (remoteAttestationProvider as any).generateAttestation(info);
     return attestation;
@@ -582,8 +579,6 @@ async function taskReceiver(runtime: IAgentRuntime, provider: ethers.WebSocketPr
 
     const roomId = stringToUuid("default-room");
     const userId = stringToUuid("user");
-    await runtime.ensureConnection(userId, roomId, null, null, "direct");
-
     const taskSubmittedFilter = await taskContract.filters.TaskSubmitted(null, wallet.address, null).getTopicFilter()
     taskContract.on(taskSubmittedFilter, async (event: EventLog) => {
         const [taskId, operator, claim] = event.args;
