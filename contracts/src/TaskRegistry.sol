@@ -26,6 +26,7 @@ contract TaskRegistry {
     // Task structure
     struct Task {
         string claim;
+        address user;
         address operator;
         ClaimVerificationResult verificationResult;
     }
@@ -38,8 +39,8 @@ contract TaskRegistry {
     mapping(uint256 => Task) public tasks;
     
     // Events
-    event TaskSubmitted(uint256 indexed taskId, address indexed operator, string claim);
-    event TaskUpdated(uint256 indexed taskId, address indexed operator, ClaimVerificationResult verificationResult);
+    event TaskSubmitted(uint256 indexed taskId, address indexed user, address indexed operator, string claim);
+    event TaskUpdated(uint256 indexed taskId, address indexed user, address indexed operator, ClaimVerificationResult verificationResult);
 
     /**
      * @dev Constructor sets the submission fee and owner
@@ -68,12 +69,13 @@ contract TaskRegistry {
         uint256 taskId = taskCount;
         tasks[taskId] = Task({
             claim: _claim,
+            user: msg.sender,
             operator: operator,
             verificationResult: ClaimVerificationResult.PENDING
         });
         
         taskCount++;
-        emit TaskSubmitted(taskId, operator, _claim);
+        emit TaskSubmitted(taskId, msg.sender, operator, _claim);
     }
 
     /**
@@ -139,6 +141,6 @@ contract TaskRegistry {
         (success, ) = msg.sender.call{value: submissionFee}("");
         require(success, "TaskRegistry: payment failed");
         
-        emit TaskUpdated(_taskId, msg.sender, _verificationResult);
+        emit TaskUpdated(_taskId, tasks[_taskId].user, msg.sender, _verificationResult);
     }
 }

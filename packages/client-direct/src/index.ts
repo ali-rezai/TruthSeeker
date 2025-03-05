@@ -466,16 +466,19 @@ async function doWebSearch(runtime: IAgentRuntime, state: State, queries: string
 }
 
 async function generateAttestation(runtime: IAgentRuntime, info: string) {
-    if (runtime.getSetting("TEE_MODE") == "LOCAL") {
+    const remoteAttestationProvider = runtime.getService("TEE" as ServiceType) as any;
+    try {
+        const attestation = await (remoteAttestationProvider as any).generateAttestation(info);
+        return attestation;
+    } catch (error) {
+        if (runtime.getSetting("TEE_MODE") == "PRODUCTION") {
+            throw error;
+        }
         return {
             quote: "0x"
         };
     }
-    const remoteAttestationProvider = runtime.getService("TEE" as ServiceType) as any;
-    const attestation = await (remoteAttestationProvider as any).generateAttestation(info);
-    return attestation;
 }
-
 
 type LogFunction = (team: "blue" | "red" | "final", message: string) => void;
 function defaultLogFunction(team: "blue" | "red" | "final", message: string) {
@@ -579,9 +582,9 @@ async function taskReceiver(runtime: IAgentRuntime, provider: ethers.WebSocketPr
 
     const roomId = stringToUuid("default-room");
     const userId = stringToUuid("user");
-    const taskSubmittedFilter = await taskContract.filters.TaskSubmitted(null, wallet.address, null).getTopicFilter()
+    const taskSubmittedFilter = await taskContract.filters.TaskSubmitted(null, null, wallet.address, null).getTopicFilter()
     taskContract.on(taskSubmittedFilter, async (event: EventLog) => {
-        const [taskId, operator, claim] = event.args;
+        const [taskId, user, operator, claim] = event.args;
         elizaLogger.info("Task received:", claim);
 
         const state = await runtime.composeState({

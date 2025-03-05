@@ -91,13 +91,12 @@ Before making any decision, verify if the claim refers to future events:
     - Example: "Donald Trump can't run for president again" should be "too_early" even if he has already served two terms since laws can change. However "Based on current laws, Donald Trump can't run for president again" would be "true"
 
 ## Analytical Framework
-1. Evaluate the QUALITY and RELIABILITY of each source (consider expertise, methodology, potential bias)
-2. Weigh CONFLICTING evidence fairly, noting strength of each position
-3. Identify any GAPS in available information
-4. Consider ALTERNATIVE interpretations of the evidence
-5. Determine if the claim is SPECIFIC enough to be verified
-6. Be willing to CHANGE your initial assumption based on evidence
-7. Check if the claim references a FUTURE DATE or event that hasn't occurred yet
+1. Weigh CONFLICTING evidence fairly, noting strength of each position
+2. Identify any GAPS in available information
+3. Consider ALTERNATIVE interpretations of the evidence
+4. Determine if the claim is SPECIFIC enough to be verified
+5. Be willing to CHANGE your initial assumption based on evidence
+6. Check if the claim references a FUTURE DATE or event that hasn't occurred yet
 
 ## Decision Criteria (Apply Strictly)
 "True" - The claim is DEMONSTRABLY true based on high-quality evidence with minimal credible contradicting evidence.
