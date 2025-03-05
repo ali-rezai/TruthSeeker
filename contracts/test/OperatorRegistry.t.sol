@@ -268,4 +268,37 @@ contract OperatorRegistryTest is Test {
         uint32 operator2Index = operatorRegistry.currentOperatorIndex(operator2);
         assertTrue(operator2Index < 2, "Operator2 should have been moved to an earlier index");
     }
+
+    function testWithdrawBelowStakeAndReregister() public {
+        // Register operator1
+        vm.prank(operator1);
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
+        
+        // Verify operator1 is registered
+        assertTrue(operatorRegistry.isActiveOperator(operator1), "Operator1 should be registered");
+        
+        // Withdraw almost all stake to trigger deregistration
+        vm.prank(operator1);
+        operatorRegistry.withdrawEth(registrationFee - 0.01 ether);
+        
+        // Verify operator1 is now deregistered
+        assertFalse(operatorRegistry.isActiveOperator(operator1), "Operator1 should be deregistered after withdrawal");
+        
+        // Check remaining stake
+        (, uint256 remainingStake,) = operatorRegistry.operators(operator1);
+        assertEq(remainingStake, 0.01 ether, "Remaining stake should be 0.01 ether");
+        
+        // Reregister by staking only enough to reach the registration fee
+        uint256 requiredAmount = registrationFee - remainingStake;
+        
+        vm.prank(operator1);
+        operatorRegistry.registerOperator{value: requiredAmount}(sampleQuote);
+        
+        // Verify operator1 is registered again
+        assertTrue(operatorRegistry.isActiveOperator(operator1), "Operator1 should be registered again");
+        
+        // Verify the total stake is exactly the registration fee
+        (, uint256 newStake,) = operatorRegistry.operators(operator1);
+        assertEq(newStake, registrationFee, "New stake should equal registration fee");
+    }
 }

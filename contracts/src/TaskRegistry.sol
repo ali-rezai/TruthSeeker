@@ -64,7 +64,7 @@ contract TaskRegistry {
         if (operatorCount == 0) {
             revert("TaskRegistry: no operators available");
         }
-        address operator = operatorRegistry.getActiveOperatorAt(block.timestamp % operatorCount);
+        address operator = operatorRegistry.getActiveOperatorAt(uint32(uint256(keccak256(abi.encodePacked(block.timestamp))) % operatorCount));
 
         uint256 taskId = taskCount;
         tasks[taskId] = Task({

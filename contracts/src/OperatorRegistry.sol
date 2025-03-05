@@ -22,7 +22,7 @@ contract OperatorRegistry is OperatorRegistryStorage {
     function registerOperator(bytes calldata teeRaQuote) external payable {
         require(operators[msg.sender].status != OperatorStatus.Registered, "Already registered");
         require(teeRaQuote.length > 0, "Empty TEE RA quote");
-        require(msg.value >= registrationFee, "Insufficient ETH sent");
+        require(msg.value + operators[msg.sender].stake >= registrationFee, "Insufficient ETH sent");
 
         // Verify TEE RA quote
         (bool success, bytes memory output) = automataDcapAttestation.verifyAndAttestOnChain(teeRaQuote);
@@ -47,7 +47,7 @@ contract OperatorRegistry is OperatorRegistryStorage {
         // Register the operator
         operators[msg.sender] = OperatorInfo({
             rtmr3: rtmr3, // Store RTMR3 so from now on it can be used directly for verification
-            stake: msg.value,
+            stake: msg.value + operators[msg.sender].stake,
             status: OperatorStatus.Registered
         });
 

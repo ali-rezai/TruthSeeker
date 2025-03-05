@@ -12,6 +12,7 @@ contract TaskRegistryTest is Test {
     address public owner;
     address public user1;
     address public user2;
+    address public user3;
     uint256 public registrationFee = 0.1 ether;
     uint256 public submissionFee = 0.01 ether;
     bytes public sampleQuote = vm.readFileBinary(string.concat(vm.projectRoot(), "/test/assets/quote.bin"));
@@ -22,11 +23,12 @@ contract TaskRegistryTest is Test {
         owner = address(this);
         user1 = makeAddr("user1");
         user2 = makeAddr("user2");
-        
+        user3 = makeAddr("user3");
+
         // Fund test users
         vm.deal(user1, 1 ether);
         vm.deal(user2, 1 ether);
-        
+        vm.deal(user3, 1 ether);
         // Deploy contract
         operatorRegistry = new OperatorRegistry(registrationFee, address(automataDcapAttestation));
         taskRegistry = new TaskRegistry(submissionFee, address(operatorRegistry), address(automataDcapAttestation));
@@ -104,6 +106,37 @@ contract TaskRegistryTest is Test {
         vm.prank(user2);
         vm.expectRevert("TaskRegistry: verification result cannot be PENDING");
         taskRegistry.submitVerificationResult(0, TaskRegistry.ClaimVerificationResult.PENDING, bytes(""));
+    }
+
+    function testTaskAssignmentWithMultipleOperators() public {
+        // Register a second operator
+        vm.startPrank(user3);
+        operatorRegistry.registerOperator{value: registrationFee}(sampleQuote);
+        vm.stopPrank();
+        
+        // Verify we have multiple operators registered
+        uint32 operatorCount = operatorRegistry.getOperatorCountAtBlockNumber(block.number);
+        assertEq(operatorCount, 2, "Should have 2 operators registered");
+        
+        // Submit a task
+        string memory claim = "The sky is blue";
+        vm.prank(user1);
+        taskRegistry.submitTask{value: submissionFee}(claim);
+        
+        // Get the task and verify it was assigned to one of the operators
+        TaskRegistry.Task memory task = taskRegistry.getTask(0);
+        
+        // Check that the operator is one of the registered operators
+        bool isValidOperator = false;
+        for (uint32 i = 0; i < operatorCount; i++) {
+            address operator = operatorRegistry.getActiveOperatorAt(i);
+            if (task.operator == operator) {
+                isValidOperator = true;
+                break;
+            }
+        }
+        
+        assertTrue(isValidOperator, "Task should be assigned to one of the registered operators");
     }
 
     function testGetNonExistentTask() public {
