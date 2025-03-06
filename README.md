@@ -255,7 +255,7 @@ Below, we showcase some examples of TruthSeeker AI in action. Examples of TruthS
 
 The below claim of “Trump declassifies Epstein list in first 100 days?” has been resolved to Yes on Polymarket. 
 
-<img src="figures/ClaimPolymarket1.png" alt="Trump declassifies Epstein list on Polymarket" style="width:60%; max-width:800px; height:auto;" />
+![Trump declassifies Epstein list on Polymarket](figures/Polymarket1.png)
 
 This was heavily disputed by users of the platform.
 
@@ -269,7 +269,7 @@ TruthSeeker provides a more nuanced and appropriate response, by concluding it i
 
 ### Polymarket case study 2: Macbook Air M4 released before April?
 
-<img src="figures/Polymarket2.png" alt="Macbook Air M4 on Polymarket" style="width:60%; max-width:800px; height:auto;" />
+![Macbook Air M4 on Polymarket](figures/Polymarket2.png)
 
 <img src="figures/ClaimPolymarket2.png" alt="Resolution" style="width:60%; max-width:800px; height:auto;" />
 
