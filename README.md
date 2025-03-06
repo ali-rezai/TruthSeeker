@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="figures/TruthSeekerBanner.png" alt="TruthSeeker" />
+</p>
+
 # What is TruthSeeker?
 
 TruthSeeker is a robust, decentralized, and verifiable claim verification system that leverages AI agents alongside blockchain infrastructure to prevent bias and ensure censorship resistance.
