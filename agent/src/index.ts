@@ -18,7 +18,7 @@ import {
     stringToUuid,
     validateCharacterConfig,
 } from "@elizaos/core";
-import { defaultCharacter } from "./defaultCharacter.ts";
+import { defaultCharacter, twitterCharacter } from "./defaultCharacter.ts";
 
 import fs from "fs";
 import net from "net";
@@ -319,44 +319,10 @@ async function readCharactersFromStorage(
 export async function loadCharacters(
     charactersArg: string
 ): Promise<Character[]> {
-    let characterPaths = commaSeparatedStringToArray(charactersArg);
-
-    if (process.env.USE_CHARACTER_STORAGE === "true") {
-        characterPaths = await readCharactersFromStorage(characterPaths);
+    if (charactersArg === "twitter") {
+        return [twitterCharacter];
     }
-
-    const loadedCharacters: Character[] = [];
-
-    if (characterPaths?.length > 0) {
-        for (const characterPath of characterPaths) {
-            try {
-                const character: Character = await loadCharacterTryPath(
-                    characterPath
-                );
-                loadedCharacters.push(character);
-            } catch (e) {
-                process.exit(1);
-            }
-        }
-    }
-
-    if (hasValidRemoteUrls()) {
-        elizaLogger.info("Loading characters from remote URLs");
-        const characterUrls = commaSeparatedStringToArray(
-            process.env.REMOTE_CHARACTER_URLS
-        );
-        for (const characterUrl of characterUrls) {
-            const characters = await loadCharactersFromUrl(characterUrl);
-            loadedCharacters.push(...characters);
-        }
-    }
-
-    if (loadedCharacters.length === 0) {
-        elizaLogger.info("No characters found, using default character");
-        loadedCharacters.push(defaultCharacter);
-    }
-
-    return loadedCharacters;
+    return [defaultCharacter];
 }
 
 async function handlePluginImporting(plugins: string[]) {

@@ -19,6 +19,7 @@
     },
     "dependencies": {
         "@elizaos/client-direct": "workspace:*",
+        "@elizaos-plugins/client-twitter": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-tee": "0.25.6-alpha.1",
         "@tavily/core": "^0.0.2",
